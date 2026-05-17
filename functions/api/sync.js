@@ -12,7 +12,7 @@ export async function onRequestPost({ request, env }) {
     if (!date || !/^\d{7}$/.test(date)) return json({ ok:false, error:'date 格式錯誤 (需 7 位數字)' }, 400);
     if (!Array.isArray(chang) || !Array.isArray(wei)) return json({ ok:false, error:'chang/wei 必須是陣列' }, 400);
 
-    const sheetId = env.GOOGLE_SHEET_ID;
+    const sheetId = (env.GOOGLE_SHEET_ID || '').trim().replace(/^﻿/, '');
     if (!sheetId) return json({ ok:false, error:'缺少 GOOGLE_SHEET_ID env' }, 500);
 
     const token = await getAccessToken(env);
@@ -84,8 +84,8 @@ async function sheetsAPI(path, method, body, token) {
 
 // ===== Google Service Account JWT → access token =====
 async function getAccessToken(env) {
-  const email = env.GOOGLE_SA_EMAIL;
-  const keyPem = env.GOOGLE_SA_PRIVATE_KEY;
+  const email = (env.GOOGLE_SA_EMAIL || '').trim();
+  const keyPem = (env.GOOGLE_SA_PRIVATE_KEY || '').trim();
   if (!email || !keyPem) throw new Error('缺少 GOOGLE_SA_EMAIL 或 GOOGLE_SA_PRIVATE_KEY env');
   const now = Math.floor(Date.now() / 1000);
   const jwtHeader = { alg: 'RS256', typ: 'JWT' };

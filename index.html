@@ -653,7 +653,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.11';
+const APP_VERSION = 'v0.3.12';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1009,6 +1009,8 @@ async function doInit(){
     const j=await r.json();
     if(!j.ok) throw new Error(j.error||'init failed');
     setSync('ok','已同步');
+    // 記錄市府補助 cisid 列表（本機 localStorage，用於儀錶板分類顯示）
+    saveSubsidy(State.date, new Set(freeRows.map(r=>r.cisid)));
     toast('場次建立成功','ok');
     await openSession(State.date);
   }catch(e){
@@ -1024,6 +1026,7 @@ async function doInit(){
 
 const RECOV_KEY = (date) => `Sample-recovery/recovDates/${date}`;
 const RESTOCK_KEY = (date) => `Sample-recovery/restock/${date}`;
+const SUBSIDY_KEY = (date) => `Sample-recovery/subsidy/${date}`;
 const PICKER_KEY = 'Sample-recovery/pickerDate';
 const MODE_KEY = 'Sample-recovery/batchMode';
 
@@ -1037,6 +1040,10 @@ function loadRestock(date){
   try{ const v=JSON.parse(localStorage.getItem(RESTOCK_KEY(date))||'{}'); return {fobt:v.fobt||0, gastric:v.gastric||0}; }catch{ return {fobt:0,gastric:0}; }
 }
 function saveRestock(date, v){ localStorage.setItem(RESTOCK_KEY(date), JSON.stringify(v)); }
+function loadSubsidy(date){
+  try{ return new Set(JSON.parse(localStorage.getItem(SUBSIDY_KEY(date))||'[]')); }catch{ return new Set(); }
+}
+function saveSubsidy(date, set){ localStorage.setItem(SUBSIDY_KEY(date), JSON.stringify([...set])); }
 function addRestock(kind, delta){
   if(!State.restock) State.restock={fobt:0,gastric:0};
   State.restock[kind] = Math.max(0, (State.restock[kind]||0)+delta);
@@ -1064,9 +1071,10 @@ async function openSession(date){
   document.getElementById('batch-date').value = State.batchDate;
   State.batchMode = localStorage.getItem(MODE_KEY) || 'recov';
   applyModeUI();
-  // load recov + restock stores
+  // load recov + restock + subsidy stores
   State.recovStore = loadRecovStore(date);
   State.restock = loadRestock(date);
+  State.subsidy = loadSubsidy(date);
   // fetch both tabs
   await Promise.all([loadSessionData('fobt'), loadSessionData('gastric')]);
   buildMerged();
@@ -1184,9 +1192,14 @@ function renderCases(){
   const gRpt = rpt(State.session.cases.gastric);
   const fAll = (State.session.cases.fobt||[]).length;
   const gAll = (State.session.cases.gastric||[]).length;
+  // 健保預防保健 vs 市府補助分類（從 localStorage 讀補助 cisid 集合）
+  const sub = State.subsidy || new Set();
+  const fSubAll = (State.session.cases.fobt||[]).filter(r=>sub.has(r.cisid)).length;
+  const fHealthAll = fAll - fSubAll;
   const donePct = allS ? Math.round(sp.done/allS*100) : 0;
   const fPct = fAll ? Math.round(fRpt.異常/fAll*100) : 0;
   const gPct = gAll ? Math.round(gRpt.異常/gAll*100) : 0;
+  const classifyHint = sub.size>0 ? `健保 ${fHealthAll} · 補助 ${fSubAll}` : `（尚無分類紀錄）`;
   document.getElementById('stats-strip').innerHTML = `
     <div class="rs-stat">
       <div class="rs-stat-label is-done">回收進度</div>
@@ -1199,12 +1212,14 @@ function renderCases(){
       <div class="rs-stat-value">${fRpt.異常}<span class="rs-stat-total">/ ${fAll} 支</span><span class="rs-stat-pct">${fPct}%</span></div>
       <div class="rs-stat-bar"><i style="width:${fPct}%;background:var(--warn)"></i></div>
       <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">正常 ${fRpt.正常} · 待回報 ${fRpt.空}</div>
+      <div style="font-size:11px;color:var(--ink-faint);margin-top:1px" class="rs-mono" data-tip="健保=fobt45-75歲名冊；補助=非45-75歲FOBT 勾選的人">${classifyHint}</div>
     </div>
     <div class="rs-stat">
       <div class="rs-stat-label is-warn">胃篩報告陽性</div>
       <div class="rs-stat-value">${gRpt.異常}<span class="rs-stat-total">/ ${gAll} 支</span><span class="rs-stat-pct">${gPct}%</span></div>
       <div class="rs-stat-bar"><i style="width:${gPct}%;background:var(--warn)"></i></div>
       <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">正常 ${gRpt.正常} · 待回報 ${gRpt.空}</div>
+      <div style="font-size:11px;color:var(--ink-faint);margin-top:1px" class="rs-mono">（皆健保 45-75）</div>
     </div>
   `;
 

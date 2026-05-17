@@ -93,13 +93,14 @@ export async function readTab(sheetId, title, token){
 // row[0..11] → case object
 export function rowToCase(row, rowNum){
   const v = i => (row[i]==null ? '' : String(row[i]));
+  const rawStatus = v(4);
   return {
     rowNum,
     name:      v(0),
     idno:      v(1),
     tel1:      v(2),
     tel2:      v(3),
-    status:    v(4),
+    status:    rawStatus==='已回收' ? 'V' : rawStatus,
     report:    v(5),
     referral:  truthy(v(6)),
     missed:    truthy(v(7)),
@@ -131,5 +132,6 @@ export const FIELD_COL = {
 
 export function partialValue(field, val){
   if (['referral','missed','cancel'].includes(field)) return val ? 'TRUE' : '';
+  if (field === 'status') return val ? 'V' : '';
   return val == null ? '' : String(val);
 }

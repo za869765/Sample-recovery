@@ -35,7 +35,7 @@ export async function onRequestGet({ env }){
         const rows = vr.values || [];
         const s = byDate.get(meta.date);
         s[meta.type] = rows.length;
-        s.recovered += rows.filter(row => row[4] === '已回收').length;
+        s.recovered += rows.filter(row => row[4] === 'V' || row[4] === '已回收').length;
       });
     }
 

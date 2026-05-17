@@ -231,16 +231,72 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
   max-width:320px;line-height:1.5;
 }
 
-/* ── duo badge (同人在腸+胃兩邊都有) ── */
-.rs-duo{
-  display:inline-flex;align-items:center;justify-content:center;
-  height:18px;min-width:18px;padding:0 4px;margin-left:4px;
-  font-family:var(--mono);font-size:9.5px;font-weight:700;
-  border-radius:3px;background:var(--warn-soft);color:var(--warn);
-  border:1px solid color-mix(in oklab,var(--warn) 30%,white);
-  vertical-align:middle;
+/* ── 腸/胃 dual chip button (取代 duo badge) ── */
+.rs-tg-group{display:inline-flex;gap:4px;margin-left:8px;vertical-align:middle}
+.rs-tg{
+  display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  height:24px;min-width:36px;padding:0 7px;
+  border-radius:5px;
+  font-family:var(--mono);font-size:11px;font-weight:600;
+  background:var(--surface);
+  border:1.5px solid var(--line-strong);
+  color:var(--ink-2);
+  cursor:pointer;
+  transition:background .12s,border-color .12s,transform .08s;
+  user-select:none;
 }
-.rs-duo.is-other-tab{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent-line)}
+.rs-tg:hover{background:var(--surface-alt);border-color:var(--ink-faint)}
+.rs-tg:active{transform:translateY(1px)}
+.rs-tg .rs-tg-dot{
+  display:inline-grid;place-items:center;
+  width:12px;height:12px;border-radius:3px;
+  border:1.4px solid var(--line-strong);background:#fff;
+  color:transparent;font-size:9px;font-weight:700;
+}
+.rs-tg.is-recov{background:var(--ok-soft);border-color:color-mix(in oklab,var(--ok) 30%,white);color:var(--ok)}
+.rs-tg.is-recov .rs-tg-dot{background:var(--ok);border-color:var(--ok);color:#fff}
+.rs-tg.is-sent{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink)}
+.rs-tg.is-sent .rs-tg-dot{background:var(--accent);border-color:var(--accent);color:#fff}
+.rs-tg.is-na{opacity:.32;cursor:not-allowed;background:var(--surface-alt);color:var(--ink-faint);border-style:dashed;border-color:var(--line)}
+.rs-tg.is-blocked{opacity:.5;cursor:not-allowed}
+
+/* ── batch mode segment ── */
+.rs-mode-seg{
+  display:inline-flex;background:var(--surface-alt);border:1px solid var(--line);border-radius:var(--radius);padding:2px;
+}
+.rs-mode-seg button{
+  height:30px;padding:0 12px;border:0;background:transparent;border-radius:4px;
+  font:inherit;font-size:12.5px;color:var(--ink-mute);cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;font-weight:500;
+}
+.rs-mode-seg button.is-on{
+  background:var(--accent);color:#fff;
+  box-shadow:0 1px 2px rgba(0,0,0,.1);
+}
+.rs-mode-seg button .rs-mode-dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.5}
+.rs-mode-seg button.is-on .rs-mode-dot{opacity:1}
+
+/* ── send date cell (clickable) ── */
+.rs-sendcell{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:64px;height:24px;padding:0 8px;border-radius:4px;
+  font-family:var(--mono);font-size:11.5px;font-weight:500;
+  background:var(--surface-alt);border:1px dashed var(--line);
+  color:var(--ink-mute);cursor:pointer;
+}
+.rs-sendcell:hover{background:var(--surface);border-color:var(--accent);color:var(--accent-ink)}
+.rs-sendcell.is-set{background:var(--accent-soft);border-style:solid;border-color:var(--accent-line);color:var(--accent-ink);font-weight:600}
+.rs-sendcell.is-na{opacity:.3;cursor:not-allowed}
+.rs-sendcell.is-locked{opacity:.55;cursor:not-allowed;background:var(--surface-alt);color:var(--ink-faint);border-style:dotted}
+
+/* ── kind chip in name column ── */
+.rs-kindset{display:inline-flex;gap:3px}
+.rs-kind{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:16px;min-width:18px;padding:0 4px;
+  font-size:10px;font-weight:600;letter-spacing:.02em;
+  border-radius:2px;background:var(--surface-alt);border:1px solid var(--line);color:var(--ink-mute);
+}
 </style>
 </head>
 <body>
@@ -258,14 +314,16 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
     </div>
     <div id="topbar-session-block" class="hidden" style="display:flex;align-items:center;gap:16px">
       <div class="rs-topbar-divider"></div>
-      <button class="rs-btn is-ghost is-sm" id="btn-switch-session">
+      <button class="rs-btn is-ghost is-sm" id="btn-switch-session" data-tip="切換場次">
         <span class="rs-mono" id="topbar-session-label" style="font-size:13px;font-weight:600"></span>
+        <span style="color:var(--ink-mute)" id="topbar-session-roc">·</span>
         <span style="color:var(--ink-mute)">場</span>
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4 L5 7 L8 4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
       </button>
-      <div class="rs-seg" id="topbar-tabs" style="margin-left:4px">
-        <button data-tab="fobt" class="is-on">腸篩 <span class="rs-pill">FOBT</span> <span class="rs-pill" id="tab-fobt-count">0</span></button>
-        <button data-tab="gastric">胃篩 <span class="rs-pill" id="tab-gastric-count">0</span></button>
+      <div style="display:flex;gap:6px;margin-left:4px;font-size:12px;color:var(--ink-mute)">
+        <span>腸篩 <b class="rs-mono" id="topbar-fobt-count" style="color:var(--ink)">0</b></span>
+        <span>·</span>
+        <span>胃篩 <b class="rs-mono" id="topbar-gastric-count" style="color:var(--ink)">0</b></span>
       </div>
     </div>
     <div class="rs-topbar-spacer"></div>
@@ -483,27 +541,35 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
 
   <!-- ─── CASES VIEW ─── -->
   <div class="view-cases" id="view-cases">
-    <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--line)">
-      <label class="rs-recovdate" title="點按改回收日期">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap">
+      <label class="rs-recovdate" data-tip="共用日期：操作模式選哪個就寫入哪個欄位">
         <svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="3" width="10" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M2 6 h10 M5 1.5 v2 M9 1.5 v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         <div>
-          <div class="rs-recovdate-lbl">回收日</div>
-          <input type="date" id="recov-date">
+          <div class="rs-recovdate-lbl">日期</div>
+          <input type="date" id="batch-date">
         </div>
       </label>
+      <div class="rs-mode-seg" id="mode-seg" data-tip="批次模式：點 [腸][胃] 按鈕時，依模式決定寫入哪邊">
+        <button data-mode="recov" class="is-on">
+          <span class="rs-mode-dot"></span>回收日
+        </button>
+        <button data-mode="send">
+          <span class="rs-mode-dot"></span>送管日
+        </button>
+      </div>
       <div class="rs-topbar-divider"></div>
-      <div id="filter-chips" style="display:flex;gap:6px"></div>
-      <div style="flex:1"></div>
+      <div id="filter-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <div style="flex:1;min-width:8px"></div>
       <div class="rs-search" id="cases-search-wrap" style="min-width:260px">
         <svg width="13" height="13" viewBox="0 0 13 13" style="color:var(--ink-faint)"><circle cx="5.5" cy="5.5" r="3.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8.5 8.5 L11.5 11.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         <input id="cases-search" placeholder="搜尋姓名 / 身分證 / 末 5 碼…">
         <span class="rs-kbd">/</span>
       </div>
-      <button class="rs-btn is-sm" id="btn-import-report" data-tip="上傳檢驗報告 xls 自動填回報告狀態（待 v0.3 實作）">
+      <button class="rs-btn is-sm" id="btn-import-report" data-tip="上傳檢驗報告 xls 自動填回報告狀態（v0.3 待規格）">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 -3 l3 3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         匯入報告
       </button>
-      <button class="rs-btn is-sm" data-tip="下載當前分頁所有個案">
+      <button class="rs-btn is-sm" id="btn-export-cases" data-tip="下載當前場次所有個案">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 3 l3 -3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         匯出
       </button>
@@ -515,15 +581,30 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
         <div class="rs-tbl-scroll">
           <table class="rs-tbl" id="cases-table">
             <colgroup>
-              <col style="width:170px"><col style="width:82px"><col style="width:110px"><col style="width:110px"><col style="width:120px"><col style="width:92px"><col style="width:78px"><col style="width:64px"><col style="width:80px"><col style="width:78px"><col style="width:78px"><col style="width:64px">
+              <col style="width:240px">
+              <col style="width:90px">
+              <col style="width:110px">
+              <col style="width:110px">
+              <col style="width:120px">
+              <col style="width:78px"><col style="width:78px">
+              <col style="width:78px"><col style="width:78px">
+              <col style="width:64px"><col style="width:64px">
+              <col style="width:64px">
             </colgroup>
             <thead>
               <tr>
-                <th>編號 <span style="color:var(--ink-faint);font-weight:400" class="rs-mono">·點按回收</span></th>
-                <th>姓名</th><th>身分證</th>
+                <th>編號 <span style="color:var(--ink-faint);font-weight:400" class="rs-mono">·點 腸/胃 按鈕</span></th>
+                <th>姓名</th>
+                <th>身分證</th>
                 <th>手機1 <span style="color:var(--ink-faint);font-weight:400">室內</span></th>
                 <th>手機2 <span style="color:var(--ink-faint);font-weight:400">行動</span></th>
-                <th>檢體狀態</th><th>報告</th><th>待轉介</th><th>未做腸鏡</th><th>發管日</th><th>送管日</th><th>取消</th>
+                <th>腸送管日</th>
+                <th>胃送管日</th>
+                <th>腸報告</th>
+                <th>胃報告</th>
+                <th>待轉介</th>
+                <th>未做腸鏡</th>
+                <th>取消</th>
               </tr>
             </thead>
             <tbody id="cases-tbody"></tbody>
@@ -533,10 +614,11 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
     </div>
 
     <div class="rs-hints" style="padding:8px 20px;background:var(--surface);border-top:1px solid var(--line)">
+      <span>模式 <span class="rs-kbd">回收日</span>：點按鈕 = 標 V + 記回收日</span>
+      <span>模式 <span class="rs-kbd">送管日</span>：點按鈕 = 寫送管日（需先有回收日）</span>
       <span><span class="rs-kbd">/</span> 搜尋</span>
-      <span><span class="rs-kbd">點編號</span> 標記回收 / 取消回收</span>
-      <span><span class="rs-kbd">↵</span> 末 5 碼 Enter 自動定位+回收</span>
-      <span style="margin-left:auto;color:var(--ink-faint)" class="rs-mono">樂觀更新 + 背景同步試算表</span>
+      <span><span class="rs-kbd">↵</span> 末 5 碼 Enter 自動定位</span>
+      <span style="margin-left:auto;color:var(--ink-faint)" class="rs-mono">樂觀更新 · 試算表後援同步</span>
     </div>
   </div>
 
@@ -550,18 +632,20 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
    APP STATE + ROUTING
    ═══════════════════════════════════════════════════════════════════ */
 const State = {
-  view: 'home',                    // 'home' | 'upload' | 'cases'
-  step: 1,                          // upload step
-  files: {},                        // {fobt, gastric, free, visit} → {name, rows}
-  date: '',                          // 民國 YYYMMDD
-  candidates: [],                    // 非45-75 候選列表
-  candPicked: new Set(),             // 候選勾選的 index
+  view: 'home',
+  step: 1,
+  files: {},
+  date: '',
+  candidates: [],
+  candPicked: new Set(),
   candSearch: '',
-  session: null,                     // {date, tab:'fobt'|'gastric', cases:[]}
+  session: null,                     // {date, cases:{fobt:[], gastric:[]}, merged:[]}
   caseFilter: 'all',
   caseSearch: '',
-  caseFocus: null,                   // tail string
-  recovDate: '',                     // YYYY-MM-DD format for <input type=date>
+  caseFocus: null,
+  batchDate: '',                     // YYYY-MM-DD format
+  batchMode: 'recov',                // 'recov' | 'send'
+  recovStore: {},                    // {cisid: {fobt?:'YYYY-MM-DD', gastric?:'YYYY-MM-DD'}}
 };
 
 function showView(v){
@@ -673,7 +757,7 @@ async function loadHome(){
       const pct = total ? Math.round(recov/total*100) : 0;
       return `<div class="rs-session" data-date="${s.date}">
         <div class="rs-session-date">${s.date}<small>${rocToDate(s.date)}</small></div>
-        <div style="width:130px;font-size:13px">${rocShort(s.date)} 場</div>
+        <div style="width:140px;font-size:13px;color:var(--ink-mute)" class="rs-mono">行醫場次 #${s.date.slice(-4)}</div>
         <div class="rs-session-meta">
           <span>腸篩 <b>${s.fobt||0}</b></span>
           <span>胃篩 <b>${s.gastric||0}</b></span>
@@ -892,20 +976,45 @@ async function doInit(){
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   CASES VIEW
+   CASES VIEW (merged 腸+胃, batch mode 回收日/送管日)
    ═══════════════════════════════════════════════════════════════════ */
+
+const RECOV_KEY = (date) => `Sample-recovery/recovDates/${date}`;
+const PICKER_KEY = 'Sample-recovery/pickerDate';
+const MODE_KEY = 'Sample-recovery/batchMode';
+
+function loadRecovStore(date){
+  try{ return JSON.parse(localStorage.getItem(RECOV_KEY(date))||'{}'); }catch{ return {}; }
+}
+function saveRecovStore(date, store){
+  localStorage.setItem(RECOV_KEY(date), JSON.stringify(store));
+}
+function getRecov(cisid, kind){
+  return State.recovStore[cisid]?.[kind] || '';
+}
+function setRecov(cisid, kind, value){
+  if(!State.recovStore[cisid]) State.recovStore[cisid] = {};
+  if(value) State.recovStore[cisid][kind] = value;
+  else { delete State.recovStore[cisid][kind]; if(!Object.keys(State.recovStore[cisid]).length) delete State.recovStore[cisid]; }
+  saveRecovStore(State.session.date, State.recovStore);
+}
+
 async function openSession(date){
   showView('cases');
-  State.session = {date, tab:'fobt', cases:{fobt:null, gastric:null}};
+  State.session = {date, cases:{fobt:[], gastric:[]}, merged:[]};
   document.getElementById('topbar-session-label').textContent = date;
+  document.getElementById('topbar-session-roc').textContent = '· ' + rocToDate(date);
   document.getElementById('topbar-session-block').classList.remove('hidden');
-  // init recov date from localStorage or today
-  const saved = localStorage.getItem('recovDate');
-  State.recovDate = saved || todayDateStr();
-  document.getElementById('recov-date').value = State.recovDate;
-  await loadSessionData('fobt');
-  await loadSessionData('gastric');
-  renderTabsCount();
+  // init picker date + mode
+  State.batchDate = localStorage.getItem(PICKER_KEY) || todayDateStr();
+  document.getElementById('batch-date').value = State.batchDate;
+  State.batchMode = localStorage.getItem(MODE_KEY) || 'recov';
+  applyModeUI();
+  // load recov store
+  State.recovStore = loadRecovStore(date);
+  // fetch both tabs
+  await Promise.all([loadSessionData('fobt'), loadSessionData('gastric')]);
+  buildMerged();
   renderCases();
 }
 async function loadSessionData(tab){
@@ -922,53 +1031,81 @@ async function loadSessionData(tab){
     State.session.cases[tab] = [];
   }
 }
-function renderTabsCount(){
-  document.getElementById('tab-fobt-count').textContent = State.session.cases.fobt?.length||0;
-  document.getElementById('tab-gastric-count').textContent = State.session.cases.gastric?.length||0;
-  document.querySelectorAll('#topbar-tabs button').forEach(b=>{
-    b.classList.toggle('is-on', b.dataset.tab===State.session.tab);
+function buildMerged(){
+  const m = new Map();
+  for (const r of (State.session.cases.fobt||[])){
+    if (!r.cisid) continue;
+    m.set(r.cisid, {cisid:r.cisid, name:r.name, idno:r.idno, tel1:r.tel1, tel2:r.tel2,
+      dispatch:r.dispatch||State.session.date, fobt:r, gastric:null});
+  }
+  for (const r of (State.session.cases.gastric||[])){
+    if (!r.cisid) continue;
+    const ex = m.get(r.cisid);
+    if (ex){
+      ex.gastric = r;
+      if(!ex.name) ex.name=r.name;
+      if(!ex.idno) ex.idno=r.idno;
+      if(!ex.tel1) ex.tel1=r.tel1;
+      if(!ex.tel2) ex.tel2=r.tel2;
+      if(!ex.dispatch) ex.dispatch=r.dispatch||State.session.date;
+    } else {
+      m.set(r.cisid, {cisid:r.cisid, name:r.name, idno:r.idno, tel1:r.tel1, tel2:r.tel2,
+        dispatch:r.dispatch||State.session.date, fobt:null, gastric:r});
+    }
+  }
+  State.session.merged = [...m.values()].sort((a,b)=>a.cisid.localeCompare(b.cisid));
+  // topbar counts
+  document.getElementById('topbar-fobt-count').textContent = (State.session.cases.fobt||[]).length;
+  document.getElementById('topbar-gastric-count').textContent = (State.session.cases.gastric||[]).length;
+}
+function applyModeUI(){
+  document.querySelectorAll('#mode-seg button').forEach(b=>{
+    b.classList.toggle('is-on', b.dataset.mode===State.batchMode);
   });
 }
-function currentRows(){
-  const rows = State.session.cases[State.session.tab] || [];
+function currentMerged(){
   const q = State.caseSearch.toLowerCase().trim();
-  return rows.filter(r=>{
-    if(State.caseFilter==='pending' && r.status!=='') return false;
-    if(State.caseFilter==='done' && r.status!=='已回收') return false;
-    if(State.caseFilter==='referral' && !r.referral) return false;
-    if(State.caseFilter==='missed' && !r.missed) return false;
-    if(State.caseFilter==='cancel' && !r.cancel) return false;
+  return State.session.merged.filter(p=>{
+    const f = p.fobt, g = p.gastric;
+    const isDoneF = f?.status==='V';
+    const isDoneG = g?.status==='V';
+    const isDone = (f? isDoneF : true) && (g? isDoneG : true) && (f||g);
+    const isPending = !isDone && !(f?.cancel||g?.cancel);
+    const isRefer = f?.referral || g?.referral;
+    const isMiss = f?.missed || g?.missed;
+    const isCancel = f?.cancel || g?.cancel;
+    if(State.caseFilter==='pending' && !isPending) return false;
+    if(State.caseFilter==='done' && !isDone) return false;
+    if(State.caseFilter==='referral' && !isRefer) return false;
+    if(State.caseFilter==='missed' && !isMiss) return false;
+    if(State.caseFilter==='cancel' && !isCancel) return false;
     if(!q) return true;
-    return r.name.toLowerCase().includes(q) || (r.idno||'').toLowerCase().includes(q) || r.cisid.toLowerCase().includes(q);
+    return (p.name||'').toLowerCase().includes(q) || (p.idno||'').toLowerCase().includes(q) || p.cisid.toLowerCase().includes(q);
   });
-}
-function statusPill(r){
-  if(r.cancel) return '<span class="rs-status is-bad">取消追蹤</span>';
-  if(r.status==='已回收') return '<span class="rs-status is-ok">已回收</span>';
-  return '<span class="rs-status">未回收</span>';
-}
-function reportPill(r){
-  if(r.report==='正常') return '<span class="rs-status is-ok">正常</span>';
-  if(r.report==='異常') return '<span class="rs-status is-warn">異常</span>';
-  return '<span style="color:var(--ink-faint);font-size:12px">—</span>';
 }
 function renderCases(){
-  // filter chips
-  const rows = State.session.cases[State.session.tab] || [];
+  const all = State.session.merged;
   const counts = {
-    all: rows.length,
-    pending: rows.filter(r=>r.status!=='已回收' && !r.cancel).length,
-    done: rows.filter(r=>r.status==='已回收').length,
-    referral: rows.filter(r=>r.referral).length,
-    missed: rows.filter(r=>r.missed).length,
-    cancel: rows.filter(r=>r.cancel).length,
+    all: all.length,
+    pending: all.filter(p=>{
+      const fobtPending = p.fobt && p.fobt.status!=='V' && !p.fobt.cancel;
+      const gPending = p.gastric && p.gastric.status!=='V' && !p.gastric.cancel;
+      return fobtPending || gPending;
+    }).length,
+    done: all.filter(p=>{
+      const fOk = !p.fobt || p.fobt.status==='V' || p.fobt.cancel;
+      const gOk = !p.gastric || p.gastric.status==='V' || p.gastric.cancel;
+      return fOk && gOk && (p.fobt||p.gastric);
+    }).length,
+    referral: all.filter(p=>p.fobt?.referral||p.gastric?.referral).length,
+    missed: all.filter(p=>p.fobt?.missed||p.gastric?.missed).length,
+    cancel: all.filter(p=>p.fobt?.cancel||p.gastric?.cancel).length,
   };
   document.getElementById('filter-chips').innerHTML = [
     ['all','全部'],['pending','未回收'],['done','已回收'],['referral','待轉介'],['missed','轉介未做腸鏡'],['cancel','取消追蹤'],
   ].map(([k,l])=>`<button class="rs-chip ${State.caseFilter===k?'is-on':''}" data-filter="${k}">${l} <span class="rs-chip-count">${counts[k]}</span></button>`).join('');
   document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{State.caseFilter=b.dataset.filter;renderCases()});
 
-  // stat strip
   document.getElementById('stats-strip').innerHTML = `
     <div class="rs-stat"><div class="rs-stat-label is-pending">未回收</div><div class="rs-stat-value">${counts.pending}<span class="rs-stat-total">/ ${counts.all}</span><span class="rs-stat-pct">${counts.all?Math.round(counts.pending/counts.all*100):0}%</span></div><div class="rs-stat-bar"><i style="width:${counts.all?Math.round(counts.pending/counts.all*100):0}%;background:var(--ink-faint)"></i></div></div>
     <div class="rs-stat"><div class="rs-stat-label is-done">已回收</div><div class="rs-stat-value">${counts.done}<span class="rs-stat-total">/ ${counts.all}</span><span class="rs-stat-pct">${counts.all?Math.round(counts.done/counts.all*100):0}%</span></div><div class="rs-stat-bar"><i style="width:${counts.all?Math.round(counts.done/counts.all*100):0}%"></i></div></div>
@@ -977,81 +1114,152 @@ function renderCases(){
     <div class="rs-stat"><div class="rs-stat-label">取消追蹤</div><div class="rs-stat-value">${counts.cancel}</div><div class="rs-stat-bar"><i style="width:${counts.all?counts.cancel/counts.all*100:0}%;background:var(--ink-faint)"></i></div></div>
   `;
 
-  // body — build dual cisid set (people who exist in the OTHER tab too)
-  const otherTab = State.session.tab==='fobt'?'gastric':'fobt';
-  const otherLabel = State.session.tab==='fobt'?'胃':'腸';
-  const otherSet = new Set((State.session.cases[otherTab]||[]).map(r=>r.cisid));
+  const list = currentMerged();
+  document.getElementById('cases-tbody').innerHTML = list.map(p=>rowHTML(p)).join('');
+  bindRowEvents();
+}
 
-  const list = currentRows();
-  document.getElementById('cases-tbody').innerHTML = list.map(r=>{
-    const isDone = r.status==='已回收';
-    const isCancel = r.cancel;
-    const {head, tail} = splitCisid(r.cisid);
-    const focusCls = State.caseFocus && r.cisid.endsWith(State.caseFocus) ? 'is-focus' : '';
-    const hasOther = otherSet.has(r.cisid);
-    const idnoMasked = r.idno ? (r.idno.slice(0,4)+'***'+r.idno.slice(-2)) : '—';
-    const cisidTip = `行動醫院編號 ${r.cisid}\n發管 ${r.dispatch||State.session.date}${r.sendDate?'\n送管 '+r.sendDate:''}${hasOther?'\n⚑ 同人也在'+otherLabel+'篩':''}`;
-    const nameTip = `${r.name}\n身分證 ${r.idno||'—'}\n${hasOther?'此人在腸+胃兩邊都做':''}`;
-    return `<tr class="${isDone?'is-done':''} ${isCancel?'is-cancelled':''} ${focusCls}" data-cisid="${r.cisid}">
-      <td>
-        <span class="rs-cisid ${isDone?'is-done':''}" data-toggle-cisid="${r.cisid}" data-tip="${cisidTip}">
-          <span class="rs-cisid-dot">${isDone?'✓':''}</span>
-          <span class="rs-cisid-head">${head}</span><span class="rs-cisid-tail">${tail}</span>
-        </span>${hasOther?`<span class="rs-duo is-other-tab" data-tip="此人也在${otherLabel}篩名冊">${otherLabel}</span>`:''}
-      </td>
-      <td style="font-weight:500" data-tip="${nameTip}">${r.name||''}</td>
-      <td class="rs-mono" style="font-size:12px" data-tip="${r.idno||'—'}">${r.idno||''}</td>
-      <td class="rs-mono" style="font-size:12px;color:${!r.tel1?'var(--ink-faint)':'inherit'}" data-tip="室內電話 ${r.tel1||'—'}">${r.tel1||'—'}</td>
-      <td class="rs-mono" style="font-size:12px" data-tip="行動電話 ${r.tel2||'—'}">${r.tel2||'—'}</td>
-      <td>
-        <select class="rs-select" data-field="status" data-cisid="${r.cisid}">
-          <option value=""${r.status===''?' selected':''}>未回收</option>
-          <option value="已回收"${r.status==='已回收'?' selected':''}>已回收</option>
-        </select>
-      </td>
-      <td>
-        <select class="rs-select" data-field="report" data-cisid="${r.cisid}">
-          <option value=""${r.report===''?' selected':''}>—</option>
-          <option value="正常"${r.report==='正常'?' selected':''}>正常</option>
-          <option value="異常"${r.report==='異常'?' selected':''}>異常</option>
-        </select>
-      </td>
-      <td><span class="rs-cb is-warn ${r.referral?'is-on':''}" data-field="referral" data-cisid="${r.cisid}" data-tip="待轉介（陽性個案需安排腸鏡）"></span></td>
-      <td><span class="rs-cb is-bad ${r.missed?'is-on':''}" data-field="missed" data-cisid="${r.cisid}" data-tip="已轉介但個案未做腸鏡"></span></td>
-      <td class="rs-mono" style="font-size:12px;color:var(--ink-mute)" data-tip="發試管日（行動醫院當天）">${r.dispatch||State.session.date}</td>
-      <td class="rs-mono" style="font-size:12px;color:${r.sendDate?'var(--ink)':'var(--ink-faint)'}" data-tip="送回試管日（點編號自動填）">${r.sendDate||'—'}</td>
-      <td><span class="rs-cb is-bad ${r.cancel?'is-on':''}" data-field="cancel" data-cisid="${r.cisid}" data-tip="取消追蹤（個案不再追）"></span></td>
-    </tr>`;
-  }).join('');
-  // bind
-  document.querySelectorAll('[data-toggle-cisid]').forEach(el=>el.onclick=()=>toggleRecover(el.dataset.toggleCisid));
-  document.querySelectorAll('[data-field]').forEach(el=>{
-    if(el.tagName==='SELECT') el.onchange=()=>updateField(el.dataset.cisid, el.dataset.field, el.value);
+function chipHTML(p, kind){ // kind = 'fobt' or 'gastric'
+  const obj = p[kind];
+  const label = kind==='fobt' ? '腸' : '胃';
+  if(!obj){
+    return `<span class="rs-tg is-na" data-tip="此人不在${label}篩名冊">${label}</span>`;
+  }
+  const isDone = obj.status==='V';
+  const sendDate = obj.sendDate||'';
+  const recovDate = getRecov(p.cisid, kind);
+  const isSent = !!sendDate;
+  const cls = isSent ? 'is-sent' : (isDone ? 'is-recov' : '');
+  const dotMark = isSent ? '→' : (isDone ? '✓' : '');
+  let tip = `${label}篩 · ${obj.cisid}`;
+  if (isDone) tip += `\n已回收${recovDate?' ('+recovDate+')':''}`;
+  if (isSent) tip += `\n送管 ${sendDate}`;
+  if (State.batchMode==='recov') tip += '\n[回收日模式] 點按 = 切換已回收 + 記今日為回收日';
+  else tip += isDone ? '\n[送管日模式] 點按 = 寫入送管日' : '\n[送管日模式] 需先有回收日';
+  return `<button class="rs-tg ${cls}" data-chip="${kind}" data-cisid="${p.cisid}" data-tip="${tip}">
+    <span class="rs-tg-dot">${dotMark}</span>${label}
+  </button>`;
+}
+function sendCellHTML(p, kind){
+  const obj = p[kind];
+  if(!obj) return `<span class="rs-sendcell is-na" data-tip="不適用">—</span>`;
+  if(obj.sendDate) return `<span class="rs-sendcell is-set" data-cisid="${p.cisid}" data-kind="${kind}" data-tip="點按取消送管日">${obj.sendDate}</span>`;
+  const hasRecov = !!getRecov(p.cisid, kind);
+  if(!hasRecov) return `<span class="rs-sendcell is-locked" data-tip="需先標記已回收（${kind==='fobt'?'腸':'胃'}篩）">—</span>`;
+  return `<span class="rs-sendcell" data-cisid="${p.cisid}" data-kind="${kind}" data-send-click data-tip="點按寫入：${dateToRoc(State.batchDate)}">點填</span>`;
+}
+function reportSelHTML(p, kind){
+  const obj = p[kind];
+  if(!obj) return `<span style="color:var(--ink-faint);font-size:11.5px">—</span>`;
+  const v = obj.report||'';
+  return `<select class="rs-select" data-fld="report" data-cisid="${p.cisid}" data-kind="${kind}">
+    <option value=""${v===''?' selected':''}>—</option>
+    <option value="正常"${v==='正常'?' selected':''}>正常</option>
+    <option value="異常"${v==='異常'?' selected':''}>異常</option>
+  </select>`;
+}
+function cbHTML(p, kind, fld, color){
+  const obj = p[kind];
+  if(!obj) return `<span style="color:var(--ink-faint);font-size:11.5px">—</span>`;
+  return `<span class="rs-cb is-${color} ${obj[fld]?'is-on':''}" data-fld="${fld}" data-cisid="${p.cisid}" data-kind="${kind}"></span>`;
+}
+function rowHTML(p){
+  const {head, tail} = splitCisid(p.cisid);
+  const isAllDone = (!p.fobt || p.fobt.status==='V' || p.fobt.cancel) && (!p.gastric || p.gastric.status==='V' || p.gastric.cancel) && (p.fobt||p.gastric);
+  const isAllCancel = p.fobt?.cancel && (!p.gastric || p.gastric.cancel);
+  const focusCls = State.caseFocus && p.cisid.endsWith(State.caseFocus) ? 'is-focus' : '';
+  const kinds = [p.fobt?'腸':null, p.gastric?'胃':null].filter(Boolean).join('+') || '—';
+  const cisidTip = `行動醫院編號 ${p.cisid}\n名冊：${kinds}\n發管 ${p.dispatch}`;
+  // We use fobt as primary cancel toggle (most operations are fobt-side)
+  const cancelKind = p.fobt ? 'fobt' : 'gastric';
+  return `<tr class="${isAllDone?'is-done':''} ${isAllCancel?'is-cancelled':''} ${focusCls}" data-cisid="${p.cisid}">
+    <td>
+      <span class="rs-cisid" data-tip="${cisidTip}">
+        <span class="rs-cisid-head">${head}</span><span class="rs-cisid-tail">${tail}</span>
+      </span>
+      <span class="rs-tg-group">${chipHTML(p,'fobt')}${chipHTML(p,'gastric')}</span>
+    </td>
+    <td style="font-weight:500" data-tip="${p.name||''}">${p.name||''}</td>
+    <td class="rs-mono" style="font-size:12px" data-tip="${p.idno||'—'}">${p.idno||'—'}</td>
+    <td class="rs-mono" style="font-size:12px;color:${!p.tel1?'var(--ink-faint)':'inherit'}">${p.tel1||'—'}</td>
+    <td class="rs-mono" style="font-size:12px">${p.tel2||'—'}</td>
+    <td>${sendCellHTML(p,'fobt')}</td>
+    <td>${sendCellHTML(p,'gastric')}</td>
+    <td>${reportSelHTML(p,'fobt')}</td>
+    <td>${reportSelHTML(p,'gastric')}</td>
+    <td>${cbHTML(p,'fobt','referral','warn')}</td>
+    <td>${cbHTML(p,'fobt','missed','bad')}</td>
+    <td>${cbHTML(p,cancelKind,'cancel','bad')}</td>
+  </tr>`;
+}
+function bindRowEvents(){
+  // chip click — depends on batch mode
+  document.querySelectorAll('[data-chip]').forEach(el=>{
+    if(el.classList.contains('is-na')) return;
+    el.onclick=()=>chipClick(el.dataset.cisid, el.dataset.chip);
+  });
+  // send-cell direct click → write send date (uses current picker)
+  document.querySelectorAll('[data-send-click]').forEach(el=>{
+    el.onclick=()=>setSendDate(el.dataset.cisid, el.dataset.kind, dateToRoc(State.batchDate));
+  });
+  document.querySelectorAll('.rs-sendcell.is-set').forEach(el=>{
+    el.onclick=()=>setSendDate(el.dataset.cisid, el.dataset.kind, '');
+  });
+  // selects + checkboxes
+  document.querySelectorAll('[data-fld]').forEach(el=>{
+    const cisid = el.dataset.cisid, fld = el.dataset.fld, kind = el.dataset.kind;
+    if(el.tagName==='SELECT') el.onchange=()=>updateField(cisid, kind, {[fld]:el.value});
     else el.onclick=()=>{
-      const r = getCase(el.dataset.cisid); if(!r) return;
-      updateField(r.cisid, el.dataset.field, !r[el.dataset.field]);
+      const p = getMerged(cisid); if(!p) return;
+      const obj = p[kind]; if(!obj) return;
+      updateField(cisid, kind, {[fld]:!obj[fld]});
     };
   });
 }
-function getCase(cisid){ return (State.session.cases[State.session.tab]||[]).find(r=>r.cisid===cisid); }
-async function toggleRecover(cisid){
-  const r=getCase(cisid); if(!r) return;
-  const willDone = r.status!=='已回收';
-  const updates = willDone
-    ? {status:'已回收', sendDate: dateToRoc(State.recovDate)}
-    : {status:'', sendDate:''};
-  await updateField(cisid, updates);
+function getMerged(cisid){ return State.session.merged.find(p=>p.cisid===cisid); }
+
+async function chipClick(cisid, kind){
+  const p = getMerged(cisid); if(!p) return;
+  const obj = p[kind]; if(!obj) return;
+  const recovDateRoc = dateToRoc(State.batchDate);
+  if(State.batchMode==='recov'){
+    // toggle status V; record/clear recov date in localStorage
+    if(obj.status==='V'){
+      setRecov(cisid, kind, '');
+      await updateField(cisid, kind, {status:''});
+    } else {
+      setRecov(cisid, kind, State.batchDate);
+      await updateField(cisid, kind, {status:'V'});
+    }
+  } else {
+    // send mode
+    if(!getRecov(cisid, kind)){
+      toast('需先在「回收日模式」標記已回收','warn'); return;
+    }
+    if(obj.sendDate){
+      await updateField(cisid, kind, {sendDate:''});
+    } else {
+      await updateField(cisid, kind, {sendDate:recovDateRoc});
+    }
+  }
 }
-async function updateField(cisid, fieldOrUpdates, value){
-  const updates = typeof fieldOrUpdates==='string' ? {[fieldOrUpdates]:value} : fieldOrUpdates;
-  const r = getCase(cisid); if(!r) return;
-  // optimistic update
-  Object.assign(r, updates);
+async function setSendDate(cisid, kind, dateRoc){
+  const p = getMerged(cisid); if(!p) return;
+  if(!getRecov(cisid, kind) && dateRoc){
+    toast('需先標記已回收','warn'); return;
+  }
+  await updateField(cisid, kind, {sendDate:dateRoc});
+}
+
+async function updateField(cisid, kind, updates){
+  const p = getMerged(cisid); if(!p) return;
+  const obj = p[kind]; if(!obj) return;
+  Object.assign(obj, updates);
   renderCases();
-  setSync('syncing','寫入');
+  setSync('syncing','寫入 '+(kind==='fobt'?'腸':'胃'));
   try{
     const res = await fetch('/api/case', {method:'PATCH', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({date:State.session.date, type:State.session.tab, cisid, updates})});
+      body: JSON.stringify({date:State.session.date, type:kind, cisid, updates})});
     const j = await res.json();
     if(!j.ok) throw new Error(j.error||'update failed');
     setSync('ok','已同步');
@@ -1089,16 +1297,29 @@ dz.addEventListener('drop',e=>handleFiles(e.dataTransfer.files));
 document.getElementById('file-input').onchange = e=>handleFiles(e.target.files);
 
 // cases view interactions
-document.getElementById('recov-date').onchange = e=>{
-  State.recovDate=e.target.value;
-  localStorage.setItem('recovDate', State.recovDate);
+document.getElementById('batch-date').onchange = e=>{
+  State.batchDate = e.target.value;
+  localStorage.setItem(PICKER_KEY, State.batchDate);
+  renderCases(); // update tooltips
 };
+document.querySelectorAll('#mode-seg button').forEach(b=>b.onclick=()=>{
+  State.batchMode = b.dataset.mode;
+  localStorage.setItem(MODE_KEY, State.batchMode);
+  applyModeUI();
+  renderCases();
+});
 document.getElementById('cases-search').oninput = e=>{ State.caseSearch=e.target.value; renderCases(); autoFocusByTail(e.target.value); };
 document.getElementById('cases-search').onkeydown = e=>{
   if(e.key==='Enter' && State.caseFocus){
-    const tab = State.session.cases[State.session.tab]||[];
-    const hit = tab.find(r=>r.cisid.endsWith(State.caseFocus));
-    if(hit){ toggleRecover(hit.cisid); e.target.value=''; State.caseSearch=''; State.caseFocus=null; renderCases(); }
+    const hit = State.session.merged.find(p=>p.cisid.endsWith(State.caseFocus));
+    if(hit){
+      // Smart action: in 回收 mode, mark whichever side(s) the person has
+      const acts = [];
+      if(hit.fobt && hit.fobt.status!=='V') acts.push(chipClick(hit.cisid,'fobt'));
+      if(hit.gastric && hit.gastric.status!=='V') acts.push(chipClick(hit.cisid,'gastric'));
+      Promise.all(acts);
+      e.target.value=''; State.caseSearch=''; State.caseFocus=null; renderCases();
+    }
   }
 };
 function autoFocusByTail(q){
@@ -1111,7 +1332,6 @@ function autoFocusByTail(q){
     document.getElementById('cases-search-wrap').classList.remove('is-active');
   }
 }
-document.querySelectorAll('#topbar-tabs button').forEach(b=>b.onclick=()=>{State.session.tab=b.dataset.tab;renderTabsCount();renderCases()});
 document.getElementById('btn-import-report').onclick = async ()=>{
   await dialog(
     `<h3>匯入檢驗報告</h3>

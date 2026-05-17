@@ -139,6 +139,17 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 .rs-stat-bar{height:3px;background:var(--surface-alt);border-radius:2px;margin-top:8px;overflow:hidden}
 .rs-stat-bar>i{display:block;height:100%;background:var(--ok)}
 
+/* ── restock strip (耗材重補記錄) ── */
+.rs-restock{display:flex;align-items:center;gap:14px;padding:8px 14px;background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:var(--radius);font-size:12.5px}
+.rs-restock-lbl{font-size:11px;letter-spacing:.06em;color:var(--accent-ink);text-transform:uppercase;font-weight:600}
+.rs-restock-item{display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid var(--accent-line);border-radius:4px;padding:2px 4px}
+.rs-restock-name{font-size:12px;color:var(--ink-2);padding:0 4px}
+.rs-restock-btn{width:22px;height:22px;border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:3px;color:var(--accent-ink);font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:inline-grid;place-items:center;padding:0}
+.rs-restock-btn:hover{background:var(--accent);color:#fff}
+.rs-restock-btn:disabled{opacity:.4;cursor:not-allowed}
+.rs-restock-val{font-family:var(--mono);font-weight:700;font-size:14px;min-width:24px;text-align:center;color:var(--ink)}
+.rs-restock-unit{font-size:11px;color:var(--ink-mute)}
+
 /* ── age tag, sex glyph ── */
 .rs-age{display:inline-flex;align-items:center;height:18px;padding:0 5px;font-family:var(--mono);font-size:10.5px;border-radius:3px;background:var(--surface-alt);border:1px solid var(--line);color:var(--ink-mute)}
 .rs-age.is-elig{background:var(--ok-soft);color:var(--ok);border-color:color-mix(in oklab,var(--ok) 25%,white)}
@@ -584,8 +595,9 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
       </button>
     </div>
 
-    <div style="padding:12px 20px;display:flex;flex-direction:column;gap:12px;flex:1;min-height:0">
+    <div style="padding:12px 20px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0">
       <div class="rs-stats" id="stats-strip"></div>
+      <div class="rs-restock" id="restock-strip"></div>
       <div class="rs-tbl-wrap" style="flex:1;min-height:0">
         <div class="rs-tbl-scroll">
           <table class="rs-tbl" id="cases-table">
@@ -637,7 +649,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.7';
+const APP_VERSION = 'v0.3.8';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1007,6 +1019,7 @@ async function doInit(){
    ═══════════════════════════════════════════════════════════════════ */
 
 const RECOV_KEY = (date) => `Sample-recovery/recovDates/${date}`;
+const RESTOCK_KEY = (date) => `Sample-recovery/restock/${date}`;
 const PICKER_KEY = 'Sample-recovery/pickerDate';
 const MODE_KEY = 'Sample-recovery/batchMode';
 
@@ -1015,6 +1028,16 @@ function loadRecovStore(date){
 }
 function saveRecovStore(date, store){
   localStorage.setItem(RECOV_KEY(date), JSON.stringify(store));
+}
+function loadRestock(date){
+  try{ const v=JSON.parse(localStorage.getItem(RESTOCK_KEY(date))||'{}'); return {fobt:v.fobt||0, gastric:v.gastric||0}; }catch{ return {fobt:0,gastric:0}; }
+}
+function saveRestock(date, v){ localStorage.setItem(RESTOCK_KEY(date), JSON.stringify(v)); }
+function addRestock(kind, delta){
+  if(!State.restock) State.restock={fobt:0,gastric:0};
+  State.restock[kind] = Math.max(0, (State.restock[kind]||0)+delta);
+  saveRestock(State.session.date, State.restock);
+  renderCases();
 }
 function getRecov(cisid, kind){
   return State.recovStore[cisid]?.[kind] || '';
@@ -1037,8 +1060,9 @@ async function openSession(date){
   document.getElementById('batch-date').value = State.batchDate;
   State.batchMode = localStorage.getItem(MODE_KEY) || 'recov';
   applyModeUI();
-  // load recov store
+  // load recov + restock stores
   State.recovStore = loadRecovStore(date);
+  State.restock = loadRestock(date);
   // fetch both tabs
   await Promise.all([loadSessionData('fobt'), loadSessionData('gastric')]);
   buildMerged();
@@ -1159,6 +1183,28 @@ function renderCases(){
     dual(sp.referral,counts.referral,allS, allP, 'warn', 'var(--warn)') +
     dual(sp.missed,  counts.missed,  allS, allP, 'bad',  'var(--bad)') +
     dual(sp.cancel,  counts.cancel,  allS, allP, 'cancel','var(--ink-faint)');
+
+  // 重補耗材記錄（不寫試算表，本機 localStorage per 場次）
+  const rs = State.restock || {fobt:0, gastric:0};
+  document.getElementById('restock-strip').innerHTML = `
+    <span class="rs-restock-lbl">耗材重補</span>
+    <span class="rs-restock-item">
+      <span class="rs-restock-name">補腸試劑</span>
+      <button class="rs-restock-btn" data-restock="fobt" data-delta="-1" ${rs.fobt<=0?'disabled':''} title="−1">−</button>
+      <span class="rs-restock-val">${rs.fobt}</span>
+      <button class="rs-restock-btn" data-restock="fobt" data-delta="1" title="+1">+</button>
+      <span class="rs-restock-unit">支</span>
+    </span>
+    <span class="rs-restock-item">
+      <span class="rs-restock-name">補胃試劑</span>
+      <button class="rs-restock-btn" data-restock="gastric" data-delta="-1" ${rs.gastric<=0?'disabled':''} title="−1">−</button>
+      <span class="rs-restock-val">${rs.gastric}</span>
+      <button class="rs-restock-btn" data-restock="gastric" data-delta="1" title="+1">+</button>
+      <span class="rs-restock-unit">支</span>
+    </span>
+    <span style="margin-left:auto;font-size:11px;color:var(--ink-mute)">總消耗 = 已送管 + 重補（僅本機紀錄，不寫試算表）</span>
+  `;
+  document.querySelectorAll('[data-restock]').forEach(b=>b.onclick=()=>addRestock(b.dataset.restock, parseInt(b.dataset.delta,10)));
 
   const list = currentMerged();
   document.getElementById('cases-tbody').innerHTML = list.map(p=>rowHTML(p)).join('');
@@ -1445,6 +1491,7 @@ function printSendList(){
   const totalF = countF + countB;
   const totalG = countG + countB;
   const summaryLine = `送管日 <b>${target}</b>　腸共 <b>${totalF}</b> 支　胃共 <b>${totalG}</b> 支`;
+  const returnLine = `腸管退回數量：<span class="ret-line"></span>　　胃管退回數量：<span class="ret-line"></span>`;
 
   const html = `<!doctype html><html lang="zh-Hant"><head>
 <meta charset="utf-8"><title>送驗清單 ${target}</title>
@@ -1473,6 +1520,8 @@ td.kind.k-b{background:#fff;color:#a14}
 .summary .totals b{font-family:Consolas,monospace;font-size:13pt;color:#000}
 .sig{display:inline-flex;align-items:flex-end;gap:8px;font-size:11.5pt}
 .sig-line{display:inline-block;border-bottom:1.4px solid #000;min-width:160px;height:26px}
+.returns{margin-top:10px;font-size:11pt;padding:6px 10px;border:1px dashed #888;border-radius:3px;display:flex;justify-content:center;gap:24px}
+.ret-line{display:inline-block;border-bottom:1.2px solid #000;min-width:60px;height:22px;vertical-align:bottom}
 .tear{margin:18px 0;text-align:center;font-family:Consolas,monospace;font-size:10pt;color:#666;border-top:2px dashed #888;padding-top:6px;letter-spacing:0.3em}
 .tear .scis{font-size:13pt;vertical-align:middle}
 .ft{font-size:7.5pt;color:#666;margin-top:12px;display:flex;justify-content:space-between;padding-top:5px;border-top:1px dotted #aaa}
@@ -1492,7 +1541,7 @@ td.kind.k-b{background:#fff;color:#a14}
   <div class="head">
     <h1>臺南市佳里區衛生所</h1>
     <h2>檢體送驗清單</h2>
-    <div class="sub">行動醫院場次 ${sessionROC} · 送管日 ${target} · 列印於 ${printedAt}</div>
+    <div class="sub">行動醫院場次 ${sessionROC} · 送管日 ${target}</div>
   </div>
   <div class="meta">
     <span>共 <b>${specimenCount}</b> 支 / <b>${countAll}</b> 人</span>
@@ -1508,6 +1557,7 @@ td.kind.k-b{background:#fff;color:#a14}
     <div class="totals">${summaryLine}</div>
     <div class="sig">收檢人簽收：<span class="sig-line"></span></div>
   </div>
+  <div class="returns">${returnLine}</div>
 </div>
 
 <!-- 撕線 -->
@@ -1524,6 +1574,7 @@ td.kind.k-b{background:#fff;color:#a14}
     <div class="totals">${summaryLine}</div>
     <div class="sig">收檢人簽收：<span class="sig-line"></span></div>
   </div>
+  <div class="returns">${returnLine}</div>
   <div class="ft"><span>● 本聯由衛生所留存作為送驗憑證</span><span>檢體回收系統 · ${APP_VERSION}</span></div>
 </div>
 </body></html>`;

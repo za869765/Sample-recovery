@@ -649,7 +649,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.8';
+const APP_VERSION = 'v0.3.9';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1168,21 +1168,41 @@ function renderCases(){
   ].map(([k,l])=>`<button class="rs-chip ${State.caseFilter===k?'is-on':''}" data-filter="${k}">${l} <span class="rs-chip-count">${counts[k]}</span></button>`).join('');
   document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{State.caseFilter=b.dataset.filter;renderCases()});
 
-  const dual = (sN,pN,sAll,pAll,kind,barCol)=>{
-    const pct = sAll ? Math.round(sN/sAll*100) : 0;
-    return `<div class="rs-stat">
-      <div class="rs-stat-label is-${kind}">${{pending:'未回收',done:'已回收',warn:'待轉介',bad:'轉介未做腸鏡',cancel:'取消追蹤'}[kind] || ''}</div>
-      <div class="rs-stat-value">${sN}<span class="rs-stat-total">/ ${sAll} 支</span><span class="rs-stat-pct">${pct}%</span></div>
-      <div class="rs-stat-bar"><i style="width:${pct}%;${barCol?'background:'+barCol:''}"></i></div>
-      <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">${pN} / ${pAll} 人</div>
-    </div>`;
+  // 報告統計 (腸/胃分開算)
+  const rpt = (rows)=>{
+    const c = {正常:0, 異常:0, 空:0};
+    for(const r of (rows||[])){
+      c[r.report==='正常'?'正常':r.report==='異常'?'異常':'空']++;
+    }
+    return c;
   };
-  document.getElementById('stats-strip').innerHTML =
-    dual(sp.pending, counts.pending, allS, allP, 'pending', 'var(--ink-faint)') +
-    dual(sp.done,    counts.done,    allS, allP, 'done') +
-    dual(sp.referral,counts.referral,allS, allP, 'warn', 'var(--warn)') +
-    dual(sp.missed,  counts.missed,  allS, allP, 'bad',  'var(--bad)') +
-    dual(sp.cancel,  counts.cancel,  allS, allP, 'cancel','var(--ink-faint)');
+  const fRpt = rpt(State.session.cases.fobt);
+  const gRpt = rpt(State.session.cases.gastric);
+  const fAll = (State.session.cases.fobt||[]).length;
+  const gAll = (State.session.cases.gastric||[]).length;
+  const donePct = allS ? Math.round(sp.done/allS*100) : 0;
+  const fPct = fAll ? Math.round(fRpt.異常/fAll*100) : 0;
+  const gPct = gAll ? Math.round(gRpt.異常/gAll*100) : 0;
+  document.getElementById('stats-strip').innerHTML = `
+    <div class="rs-stat">
+      <div class="rs-stat-label is-done">回收進度</div>
+      <div class="rs-stat-value">${sp.done}<span class="rs-stat-total">/ ${allS} 支</span><span class="rs-stat-pct">${donePct}%</span></div>
+      <div class="rs-stat-bar"><i style="width:${donePct}%"></i></div>
+      <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">已收 ${counts.done} 人 · 未收 ${counts.pending} 人 / ${counts.all} 人</div>
+    </div>
+    <div class="rs-stat">
+      <div class="rs-stat-label is-warn">腸篩報告陽性</div>
+      <div class="rs-stat-value">${fRpt.異常}<span class="rs-stat-total">/ ${fAll} 支</span><span class="rs-stat-pct">${fPct}%</span></div>
+      <div class="rs-stat-bar"><i style="width:${fPct}%;background:var(--warn)"></i></div>
+      <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">正常 ${fRpt.正常} · 待回報 ${fRpt.空}</div>
+    </div>
+    <div class="rs-stat">
+      <div class="rs-stat-label is-warn">胃篩報告陽性</div>
+      <div class="rs-stat-value">${gRpt.異常}<span class="rs-stat-total">/ ${gAll} 支</span><span class="rs-stat-pct">${gPct}%</span></div>
+      <div class="rs-stat-bar"><i style="width:${gPct}%;background:var(--warn)"></i></div>
+      <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">正常 ${gRpt.正常} · 待回報 ${gRpt.空}</div>
+    </div>
+  `;
 
   // 重補耗材記錄（不寫試算表，本機 localStorage per 場次）
   const rs = State.restock || {fobt:0, gastric:0};

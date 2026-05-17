@@ -718,7 +718,17 @@ function phoneNorm(v){
 }
 function splitCisid(c){
   c=String(c||'');
-  return {head: c.length>=8?c.slice(0,8):c, tail: c.length>=8?c.slice(8):''};
+  return {head: c.length>=9?c.slice(0,9):c, tail: c.length>=9?c.slice(9):c};
+}
+function rocToMMDD(roc){ // 1150516 → 05/16
+  if(!roc || String(roc).length!==7) return '';
+  return String(roc).slice(3,5) + '/' + String(roc).slice(5,7);
+}
+function normMMDD(v){ // 兼容舊民國 7 碼或已 MM/DD 字串
+  if(!v) return '';
+  const s = String(v).trim();
+  if(/^\d{7}$/.test(s)) return rocToMMDD(s);
+  return s;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1178,7 +1188,7 @@ function rowHTML(p){
   const isAllCancel = p.fobt?.cancel && (!p.gastric || p.gastric.cancel);
   const focusCls = State.caseFocus && p.cisid.endsWith(State.caseFocus) ? 'is-focus' : '';
   const kinds = [p.fobt?'腸':null, p.gastric?'胃':null].filter(Boolean).join('+') || '—';
-  const cisidTip = `行動醫院編號 ${p.cisid}\n名冊：${kinds}\n發管 ${p.dispatch}`;
+  const cisidTip = `行動醫院編號 ${p.cisid}\n名冊：${kinds}\n發管 ${normMMDD(p.dispatch)}`;
   // We use fobt as primary cancel toggle (most operations are fobt-side)
   const cancelKind = p.fobt ? 'fobt' : 'gastric';
   return `<tr class="${isAllDone?'is-done':''} ${isAllCancel?'is-cancelled':''} ${focusCls}" data-cisid="${p.cisid}">
@@ -1331,7 +1341,7 @@ document.getElementById('cases-search').onkeydown = e=>{
 };
 function autoFocusByTail(q){
   q=String(q||'').trim();
-  if(/^\d{5}$/.test(q)){
+  if(/^\d{4}$/.test(q)){
     State.caseFocus = q;
     document.getElementById('cases-search-wrap').classList.add('is-active');
   } else {
@@ -1359,7 +1369,7 @@ function printPickList(){
   const countG = pending.filter(p=>p.needs.includes('胃')).length;
 
   const rows = pending.map(p=>`<tr>
-    <td class="num">${p.cisid.slice(-5)}</td>
+    <td class="num">${p.cisid.slice(-4)}</td>
     <td class="kind k-${p.needs==='腸'?'f':p.needs==='胃'?'g':'b'}">${p.needs}</td>
     <td class="name">${escapeHTML(p.name)}</td>
     <td class="chk">□</td>

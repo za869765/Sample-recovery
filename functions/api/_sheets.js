@@ -15,6 +15,11 @@ export function tabName(type, date){
   return TAB_PREFIX[type] + date;
 }
 
+export function rocToMMDD(roc){
+  if (!roc || String(roc).length !== 7) return '';
+  return String(roc).slice(3,5) + '/' + String(roc).slice(5,7);
+}
+
 export function json(obj, status=200){
   return new Response(JSON.stringify(obj), { status, headers:{'Content-Type':'application/json'} });
 }

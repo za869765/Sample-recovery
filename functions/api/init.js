@@ -2,7 +2,7 @@
 // Body: { date:'1150516', fobt:[{cisid,name,idno,tel1,tel2}], gastric:[...] }
 // Builds two tabs (行醫腸篩{date} / 行醫胃篩{date}), clears them, writes rows.
 
-import { getSheetId, getAccessToken, sheetsAPI, ensureTab, tabName, json, caseToRow, listTabs } from './_sheets.js';
+import { getSheetId, getAccessToken, sheetsAPI, ensureTab, tabName, json, caseToRow, listTabs, rocToMMDD } from './_sheets.js';
 
 export async function onRequestPost({ request, env }){
   try{
@@ -24,11 +24,12 @@ export async function onRequestPost({ request, env }){
       await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(t)}!A2:L:clear`, 'POST', {}, token);
     }
 
-    // build rows
+    // build rows (dispatch 寫 MM/DD 不是民國 7 碼)
+    const dispatchMMDD = rocToMMDD(date);
     const toCase = (r) => ({
       name: r.name, idno: r.idno, tel1: r.tel1, tel2: r.tel2,
       status:'', report:'', referral:false, missed:false,
-      dispatch: date, sendDate:'', cancel:false,
+      dispatch: dispatchMMDD, sendDate:'', cancel:false,
       cisid: r.cisid,
     });
     const fobtRows = fobt.map(r => caseToRow(toCase(r)));

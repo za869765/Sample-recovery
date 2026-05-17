@@ -570,6 +570,10 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M3 1.5 h7 v3 H3 Z M2 4.5 h9 v5 a1 1 0 0 1 -1 1 H3 a1 1 0 0 1 -1 -1 Z M4 7 h5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>
         列印待收檢
       </button>
+      <button class="rs-btn is-sm" id="btn-print-send" data-tip="列印「指定送管日」清單：給檢驗單位收檢人簽收用（用上方 picker 日期）">
+        <svg width="13" height="13" viewBox="0 0 13 13"><path d="M3 1.5 h7 v3 H3 Z M2 4.5 h9 v5 a1 1 0 0 1 -1 1 H3 a1 1 0 0 1 -1 -1 Z M4 7 l1.5 1.5 L9 5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round" stroke-linecap="round"/></svg>
+        列印送管
+      </button>
       <button class="rs-btn is-sm" id="btn-import-report" data-tip="上傳檢驗報告 xls 自動填回報告狀態（v0.3 待規格）">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 -3 l3 3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         匯入報告
@@ -633,7 +637,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.5';
+const APP_VERSION = 'v0.3.6';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1406,6 +1410,96 @@ function autoFocusByTail(q){
   }
 }
 document.getElementById('btn-print-pick').onclick = ()=>printPickList();
+document.getElementById('btn-print-send').onclick = ()=>printSendList();
+
+function printSendList(){
+  if(!State.session?.merged?.length){ toast('無資料','warn'); return; }
+  const target = dateToMMDD(State.batchDate);
+  if(!target){ toast('請先在上方選擇日期','warn'); return; }
+  // 合併同人：每人在當日送了哪些（腸/胃/腸+胃）
+  const items = [];
+  for(const p of State.session.merged){
+    const kinds = [];
+    if(p.fobt?.sendDate === target)    kinds.push('腸');
+    if(p.gastric?.sendDate === target) kinds.push('胃');
+    if(kinds.length) items.push({cisid:p.cisid, kinds:kinds.join('+')});
+  }
+  if(!items.length){ toast(`${target} 無送管紀錄`,'warn'); return; }
+  items.sort((a,b)=>a.cisid.localeCompare(b.cisid));
+
+  const sessionDate = State.session.date;
+  const sessionROC = `${parseInt(sessionDate.slice(0,3),10)} 年 ${parseInt(sessionDate.slice(3,5),10)} 月 ${parseInt(sessionDate.slice(5,7),10)} 日`;
+  const printedAt = new Date().toLocaleString('zh-TW',{hour12:false});
+  const countAll = items.length;
+  const countF = items.filter(x=>x.kinds==='腸').length;
+  const countG = items.filter(x=>x.kinds==='胃').length;
+  const countB = items.filter(x=>x.kinds==='腸+胃').length;
+  const specimenCount = items.reduce((n,x)=>n+(x.kinds.includes('腸')?1:0)+(x.kinds.includes('胃')?1:0), 0);
+
+  const rows = items.map((s,i)=>`<tr>
+    <td class="seq">${i+1}</td>
+    <td class="num">${s.cisid.slice(-4)}</td>
+    <td class="kind k-${s.kinds==='腸'?'f':s.kinds==='胃'?'g':'b'}">${s.kinds}</td>
+  </tr>`).join('');
+
+  const html = `<!doctype html><html lang="zh-Hant"><head>
+<meta charset="utf-8"><title>送驗清單 ${target}</title>
+<style>
+@page{size:A4 portrait;margin:1cm}
+*{box-sizing:border-box}
+body{font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;font-size:11pt;color:#000;margin:0;padding:0;line-height:1.4}
+.head{text-align:center;margin-bottom:14px}
+.head h1{font-size:18pt;margin:0 0 4px;font-weight:700;letter-spacing:0.15em}
+.head h2{font-size:13pt;margin:0 0 6px;font-weight:500}
+.head .sub{font-size:10.5pt;color:#333}
+.meta{display:flex;gap:18px;font-size:10pt;color:#333;padding:6px 8px;border-top:1.5px solid #000;border-bottom:1.5px solid #000;margin-bottom:10px}
+.meta b{color:#000}
+.cols{column-count:3;column-gap:14px;column-rule:1px dashed #ccc}
+table{width:100%;border-collapse:collapse;font-size:11pt}
+tr{break-inside:avoid;page-break-inside:avoid}
+td{border:1px solid #888;padding:3px 6px;vertical-align:middle}
+td.seq{width:30px;text-align:center;font-family:Consolas,monospace;color:#666;font-size:9pt}
+td.num{width:54px;text-align:center;font-family:Consolas,monospace;font-weight:700;font-size:12pt;letter-spacing:0.02em}
+td.kind{text-align:center;font-size:10.5pt;font-weight:700}
+td.kind.k-f{background:#fff8e6}
+td.kind.k-g{background:#eef5ff}
+td.kind.k-b{background:#fff;color:#a14}
+.foot{margin-top:32px;display:flex;justify-content:flex-end;gap:48px;align-items:flex-end;font-size:11.5pt}
+.sig{display:flex;align-items:flex-end;gap:8px}
+.sig-line{display:inline-block;border-bottom:1px solid #000;min-width:180px;height:28px}
+.ft{font-size:7.5pt;color:#666;margin-top:18px;display:flex;justify-content:space-between;padding-top:6px;border-top:1px dashed #ccc}
+.bar{padding:6px;background:#f4f2ec;border:1px solid #999;text-align:center;margin-bottom:10px;font-size:10pt;display:none}
+@media screen{.bar{display:block}body{padding:20px;max-width:920px;margin:0 auto;background:#f4f2ec}.cols{background:#fff;padding:14px;border:1px solid #ccc}}
+@media print{.bar{display:none}}
+</style></head><body>
+<div class="bar">
+  <button onclick="window.print()" style="padding:6px 14px;font-size:13px">🖨 列印</button>
+</div>
+<div class="head">
+  <h1>臺南市佳里區衛生所</h1>
+  <h2>檢體送驗清單</h2>
+  <div class="sub">行動醫院場次 ${sessionROC} · 送管日 ${target}</div>
+</div>
+<div class="meta">
+  <span>共 <b>${specimenCount}</b> 支 / <b>${countAll}</b> 人</span>
+  <span>腸 <b>${countF + countB}</b></span>
+  <span>胃 <b>${countG + countB}</b></span>
+  ${countB?`<span>同人腸+胃 <b>${countB}</b> 人</span>`:''}
+  <span style="margin-left:auto">列印於 ${printedAt}</span>
+</div>
+<div class="cols">
+  <table><tbody>${rows}</tbody></table>
+</div>
+<div class="foot">
+  <div class="sig">收檢人簽收：<span class="sig-line"></span></div>
+</div>
+<div class="ft"><span>● 此清單作為檢體交接憑證</span><span>檢體回收系統 · ${APP_VERSION}</span></div>
+</body></html>`;
+
+  const w = window.open('','_blank','width=920,height=1100');
+  if(!w){ toast('瀏覽器封鎖開新視窗，請允許','bad'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
 
 function printPickList(){
   if(!State.session || !State.session.merged?.length){ toast('無資料可列印','warn'); return; }

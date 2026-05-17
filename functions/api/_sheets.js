@@ -59,13 +59,19 @@ function b64url(bytes){
   return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 }
 
-export async function sheetsAPI(path, method, body, token){
+export async function sheetsAPI(path, method, body, token, attempt = 0){
   const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets${path}`, {
     method,
     headers:{'Authorization':`Bearer ${token}`, 'Content-Type':'application/json'},
     body: body==null ? undefined : JSON.stringify(body)
   });
   const txt = await r.text();
+  // 429 (rate limit) / 503 (transient) → 指數退避重試 1s, 2s, 4s, 8s
+  if ((r.status === 429 || r.status === 503) && attempt < 4){
+    const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+    await new Promise(res => setTimeout(res, delay));
+    return sheetsAPI(path, method, body, token, attempt + 1);
+  }
   if (!r.ok) throw new Error(`Sheets ${method} ${path} → ${r.status}: ${txt.substring(0,300)}`);
   return txt ? JSON.parse(txt) : {};
 }

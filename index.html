@@ -664,7 +664,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.15';
+const APP_VERSION = 'v0.3.16';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1608,7 +1608,7 @@ function pickDateDialog(defaultDate, title){
   });
 }
 
-/* ── 一鍵送管：所有 V 且無 sendDate 的批次填入 ── */
+/* ── 一鍵送管：用 /api/batch_case 一次寫多 cells，避開 Sheets quota ── */
 async function batchSendAll(){
   if(!State.session?.merged?.length){ toast('無資料','warn'); return; }
   const list = [];
@@ -1625,13 +1625,35 @@ async function batchSendAll(){
   if(!dateStr) return;
   const mmdd = dateToMMDD(dateStr);
   setSync('syncing','批次送管中');
-  let ok=0, fail=0;
+  // optimistic UI 先更新
   for(const c of list){
-    try{ await updateField(c.cisid, c.kind, {sendDate: mmdd}); ok++; }
-    catch(e){ fail++; }
+    const p = getMerged(c.cisid);
+    if(p && p[c.kind]) p[c.kind].sendDate = mmdd;
   }
-  setSync('ok','已同步');
-  toast(`一鍵送管完成：${ok} 件${fail?' / '+fail+' 失敗':''}（送管日 ${mmdd}）`,'ok');
+  renderCases();
+  // 分腸/胃兩個 batch request
+  let ok=0, fail=0;
+  for(const type of ['fobt','gastric']){
+    const updates = list.filter(c=>c.kind===type).map(c=>({cisid:c.cisid, fields:{sendDate:mmdd}}));
+    if(!updates.length) continue;
+    try{
+      const r = await fetch('/api/batch_case', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date:State.session.date, type, updates})});
+      const j = await r.json();
+      if(!j.ok) throw new Error(j.error||'batch failed');
+      ok += (j.rows||updates.length);
+    }catch(e){
+      fail += updates.length;
+      // rollback optimistic update
+      for(const u of updates){
+        const p = getMerged(u.cisid);
+        if(p && p[type]) p[type].sendDate = '';
+      }
+    }
+  }
+  renderCases();
+  if(fail){ setSync('bad','部分失敗'); toast(`送管完成：${ok} 成功 / ${fail} 失敗`,'bad'); }
+  else { setSync('ok','已同步'); toast(`一鍵送管完成：${ok} 件（送管日 ${mmdd}）`,'ok'); }
 }
 
 /* ── 列印送管：先彈日期窗 ── */

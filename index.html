@@ -310,7 +310,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
     <div class="rs-brand">
       <div class="rs-brand-mark">R</div>
       <div>
-        <div class="rs-brand-title">行動醫院檢體回收<span class="rs-brand-sub">v0.2.0</span></div>
+        <div class="rs-brand-title">行動醫院檢體回收<span class="rs-brand-sub" id="app-version">v0.3.4</span></div>
       </div>
     </div>
     <div id="topbar-session-block" class="hidden" style="display:flex;align-items:center;gap:16px">
@@ -633,6 +633,8 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
+const APP_VERSION = 'v0.3.4';
+
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
    ═══════════════════════════════════════════════════════════════════ */
@@ -1452,7 +1454,7 @@ td.chk .box{display:inline-block;width:20px;height:20px;border:1.6px solid #555;
 <div class="cols">
   <table><tbody>${rows}</tbody></table>
 </div>
-<div class="ft"><span>● 紙本對勾後，回系統「回收日模式」點按相應編號</span><span>檢體回收系統 · v0.3.x</span></div>
+<div class="ft"><span>● 紙本對勾後，回系統「回收日模式」點按相應編號</span><span>檢體回收系統 · ${APP_VERSION}</span></div>
 </body></html>`;
 
   const w = window.open('', '_blank', 'width=900,height=1100');
@@ -1483,6 +1485,7 @@ document.addEventListener('keydown',e=>{
 /* ═══════════════════════════════════════════════════════════════════
    INIT
    ═══════════════════════════════════════════════════════════════════ */
+document.getElementById('app-version').textContent = APP_VERSION;
 loadHome();
 </script>
 </body>

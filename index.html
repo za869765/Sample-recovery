@@ -386,6 +386,20 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 
       <section style="display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:baseline;gap:12px">
+          <h2 style="margin:0;font-size:13px;font-weight:500;color:var(--ink-2);letter-spacing:.02em">跨場次回收進度圖</h2>
+          <div style="flex:1;height:1px;background:var(--line)"></div>
+          <button class="rs-btn is-sm" id="btn-export-chart" data-tip="匯出當前圖表為 PNG 檔案">
+            <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 3 l3 -3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            匯出 PNG
+          </button>
+        </div>
+        <div class="rs-card" style="padding:16px;background:#fff">
+          <svg id="progress-chart" style="width:100%;display:block;max-height:520px" preserveAspectRatio="xMidYMin meet"></svg>
+        </div>
+      </section>
+
+      <section style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;gap:12px">
           <h2 style="margin:0;font-size:13px;font-weight:500;color:var(--ink-2);letter-spacing:.02em">近期場次</h2>
           <div style="flex:1;height:1px;background:var(--line)"></div>
           <div style="font-size:11.5px;color:var(--ink-faint)" class="rs-mono">依民國日期降冪</div>
@@ -650,7 +664,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.14';
+const APP_VERSION = 'v0.3.15';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -811,10 +825,99 @@ async function loadHome(){
       </div>`;
     }).join('');
     list.querySelectorAll('.rs-session').forEach(el=>el.onclick=()=>openSession(el.dataset.date));
+    renderProgressChart(sessions);
   }catch(e){
     setSync('bad','載入失敗');
     list.innerHTML='<div style="padding:24px;text-align:center;color:var(--bad);font-size:13px">載入失敗：'+e.message+'</div>';
   }
+}
+
+/* ── 跨場次回收進度圖 ── */
+function renderProgressChart(sessions){
+  const svg = document.getElementById('progress-chart');
+  if(!svg) return;
+  if(!sessions?.length){ svg.innerHTML=''; return; }
+  const sorted = [...sessions].sort((a,b)=>a.date.localeCompare(b.date));
+  const rowH = 28, padTop = 56, padLeft = 110, padRight = 70, padBot = 30;
+  const barH = 18;
+  const totals = sorted.map(s=>(s.fobt||0)+(s.gastric||0));
+  const maxTotal = Math.max(...totals, 1);
+  const chartW = 800 - padLeft - padRight;
+  const svgH = padTop + sorted.length*rowH + padBot;
+
+  const sumAll = totals.reduce((a,b)=>a+b,0);
+  const sumRecov = sorted.reduce((a,s)=>a+(s.recovered||0),0);
+  const overallPct = sumAll ? Math.round(sumRecov/sumAll*100) : 0;
+
+  // Axis ticks at 0, 25%, 50%, 75%, 100%
+  const ticks = [0,0.25,0.5,0.75,1].map(t=>{
+    const x = padLeft + chartW*t;
+    return `<line x1="${x}" y1="${padTop-4}" x2="${x}" y2="${svgH-padBot+4}" stroke="#eee" stroke-width="0.7"/>
+            <text x="${x}" y="${padTop-8}" font-size="9" fill="#999" text-anchor="middle" font-family="JetBrains Mono,monospace">${Math.round(t*maxTotal)}</text>`;
+  }).join('');
+
+  const rows = sorted.map((s,i)=>{
+    const y = padTop + i*rowH;
+    const total = (s.fobt||0)+(s.gastric||0);
+    const recov = s.recovered||0;
+    const pct = total ? recov/total : 0;
+    const wTotal = chartW * (total/maxTotal);
+    const wRecov = wTotal * pct;
+    const pctTxt = `${recov}/${total} (${Math.round(pct*100)}%)`;
+    return `<g>
+      <text x="${padLeft-8}" y="${y+barH/2+4}" text-anchor="end" font-family="JetBrains Mono,monospace" font-size="11" fill="#222">${s.date}</text>
+      <rect x="${padLeft}" y="${y}" width="${wTotal}" height="${barH}" fill="#f0eee8" stroke="#d4d0c4" stroke-width="0.5" rx="3"/>
+      <rect x="${padLeft}" y="${y}" width="${wRecov}" height="${barH}" fill="oklch(0.60 0.13 150)" rx="3"/>
+      <text x="${padLeft+wTotal+8}" y="${y+barH/2+4}" font-size="10.5" fill="#3a3d38" font-family="JetBrains Mono,monospace">${pctTxt}</text>
+    </g>`;
+  }).join('');
+
+  svg.setAttribute('viewBox', `0 0 800 ${svgH}`);
+  svg.innerHTML = `
+    <rect width="800" height="${svgH}" fill="#ffffff"/>
+    <text x="${padLeft}" y="22" font-family="Noto Sans TC,Microsoft JhengHei,sans-serif" font-size="14" font-weight="600" fill="#1a1c19">行動醫院檢體回收進度</text>
+    <text x="${padLeft}" y="36" font-family="Noto Sans TC,sans-serif" font-size="10" fill="#6d706a">共 ${sorted.length} 場 · 總人次 ${sumAll} · 已回收 ${sumRecov} (${overallPct}%)</text>
+    <text x="800-${padRight}" y="36" font-family="JetBrains Mono,monospace" font-size="9" fill="#9a9c94" text-anchor="end">產生於 ${new Date().toLocaleString('zh-TW',{hour12:false})}</text>
+    ${ticks}
+    ${rows}
+  `;
+}
+
+/* ── 匯出圖表 PNG ── */
+function exportChartPNG(){
+  const svg = document.getElementById('progress-chart');
+  if(!svg || !svg.innerHTML) { toast('無圖表資料','warn'); return; }
+  // serialize svg with computed sizes
+  const vb = svg.getAttribute('viewBox').split(' ').map(Number);
+  const w = vb[2], h = vb[3];
+  const cloned = svg.cloneNode(true);
+  cloned.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  cloned.setAttribute('width', w);
+  cloned.setAttribute('height', h);
+  const svgStr = new XMLSerializer().serializeToString(cloned);
+  const blob = new Blob([svgStr],{type:'image/svg+xml;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = ()=>{
+    const scale = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = w*scale; canvas.height = h*scale;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    canvas.toBlob(b=>{
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:T]/g,'-').slice(0,16);
+      a.href = URL.createObjectURL(b);
+      a.download = `回收進度圖_${ts}.png`;
+      a.click();
+      toast('已匯出 PNG','ok');
+    },'image/png');
+  };
+  img.onerror = ()=>{ toast('匯出失敗','bad'); URL.revokeObjectURL(url); };
+  img.src = url;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1420,6 +1523,7 @@ async function updateField(cisid, kind, updates){
    EVENT WIRING
    ═══════════════════════════════════════════════════════════════════ */
 document.getElementById('btn-open-new').onclick = openUpload;
+document.getElementById('btn-export-chart').onclick = exportChartPNG;
 document.getElementById('btn-open-existing').onclick = loadHome;
 document.getElementById('btn-home').onclick = loadHome;
 document.getElementById('btn-upload-back').onclick = loadHome;

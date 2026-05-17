@@ -215,6 +215,32 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
 .rs-dialog h3{margin:0 0 8px;font-size:16px;font-weight:600}
 .rs-dialog p{margin:0 0 16px;font-size:13px;color:var(--ink-mute);line-height:1.6}
 .rs-dialog-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+
+/* ── tooltip (浮標) ── */
+[data-tip]{position:relative}
+[data-tip]:hover::before{
+  content:"";position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);
+  border:5px solid transparent;border-top-color:rgba(20,22,18,.92);pointer-events:none;z-index:50;
+}
+[data-tip]:hover::after{
+  content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  background:rgba(20,22,18,.92);color:#fff;padding:6px 10px;border-radius:5px;
+  font-family:var(--sans);font-size:11.5px;font-weight:400;letter-spacing:0;
+  white-space:pre;pointer-events:none;z-index:50;
+  box-shadow:0 4px 14px rgba(0,0,0,.18);
+  max-width:320px;line-height:1.5;
+}
+
+/* ── duo badge (同人在腸+胃兩邊都有) ── */
+.rs-duo{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:18px;min-width:18px;padding:0 4px;margin-left:4px;
+  font-family:var(--mono);font-size:9.5px;font-weight:700;
+  border-radius:3px;background:var(--warn-soft);color:var(--warn);
+  border:1px solid color-mix(in oklab,var(--warn) 30%,white);
+  vertical-align:middle;
+}
+.rs-duo.is-other-tab{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent-line)}
 </style>
 </head>
 <body>
@@ -473,6 +499,14 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
         <input id="cases-search" placeholder="搜尋姓名 / 身分證 / 末 5 碼…">
         <span class="rs-kbd">/</span>
       </div>
+      <button class="rs-btn is-sm" id="btn-import-report" data-tip="上傳檢驗報告 xls 自動填回報告狀態（待 v0.3 實作）">
+        <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 -3 l3 3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        匯入報告
+      </button>
+      <button class="rs-btn is-sm" data-tip="下載當前分頁所有個案">
+        <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 3 l3 -3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        匯出
+      </button>
     </div>
 
     <div style="padding:12px 20px;display:flex;flex-direction:column;gap:12px;flex:1;min-height:0">
@@ -943,22 +977,32 @@ function renderCases(){
     <div class="rs-stat"><div class="rs-stat-label">取消追蹤</div><div class="rs-stat-value">${counts.cancel}</div><div class="rs-stat-bar"><i style="width:${counts.all?counts.cancel/counts.all*100:0}%;background:var(--ink-faint)"></i></div></div>
   `;
 
-  // body
+  // body — build dual cisid set (people who exist in the OTHER tab too)
+  const otherTab = State.session.tab==='fobt'?'gastric':'fobt';
+  const otherLabel = State.session.tab==='fobt'?'胃':'腸';
+  const otherSet = new Set((State.session.cases[otherTab]||[]).map(r=>r.cisid));
+
   const list = currentRows();
   document.getElementById('cases-tbody').innerHTML = list.map(r=>{
     const isDone = r.status==='已回收';
     const isCancel = r.cancel;
     const {head, tail} = splitCisid(r.cisid);
     const focusCls = State.caseFocus && r.cisid.endsWith(State.caseFocus) ? 'is-focus' : '';
+    const hasOther = otherSet.has(r.cisid);
+    const idnoMasked = r.idno ? (r.idno.slice(0,4)+'***'+r.idno.slice(-2)) : '—';
+    const cisidTip = `行動醫院編號 ${r.cisid}\n發管 ${r.dispatch||State.session.date}${r.sendDate?'\n送管 '+r.sendDate:''}${hasOther?'\n⚑ 同人也在'+otherLabel+'篩':''}`;
+    const nameTip = `${r.name}\n身分證 ${r.idno||'—'}\n${hasOther?'此人在腸+胃兩邊都做':''}`;
     return `<tr class="${isDone?'is-done':''} ${isCancel?'is-cancelled':''} ${focusCls}" data-cisid="${r.cisid}">
-      <td><span class="rs-cisid ${isDone?'is-done':''}" data-toggle-cisid="${r.cisid}">
-        <span class="rs-cisid-dot">${isDone?'✓':''}</span>
-        <span class="rs-cisid-head">${head}</span><span class="rs-cisid-tail">${tail}</span>
-      </span></td>
-      <td style="font-weight:500">${r.name||''}</td>
-      <td class="rs-mono" style="font-size:12px">${r.idno||''}</td>
-      <td class="rs-mono" style="font-size:12px;color:${!r.tel1?'var(--ink-faint)':'inherit'}">${r.tel1||'—'}</td>
-      <td class="rs-mono" style="font-size:12px">${r.tel2||'—'}</td>
+      <td>
+        <span class="rs-cisid ${isDone?'is-done':''}" data-toggle-cisid="${r.cisid}" data-tip="${cisidTip}">
+          <span class="rs-cisid-dot">${isDone?'✓':''}</span>
+          <span class="rs-cisid-head">${head}</span><span class="rs-cisid-tail">${tail}</span>
+        </span>${hasOther?`<span class="rs-duo is-other-tab" data-tip="此人也在${otherLabel}篩名冊">${otherLabel}</span>`:''}
+      </td>
+      <td style="font-weight:500" data-tip="${nameTip}">${r.name||''}</td>
+      <td class="rs-mono" style="font-size:12px" data-tip="${r.idno||'—'}">${r.idno||''}</td>
+      <td class="rs-mono" style="font-size:12px;color:${!r.tel1?'var(--ink-faint)':'inherit'}" data-tip="室內電話 ${r.tel1||'—'}">${r.tel1||'—'}</td>
+      <td class="rs-mono" style="font-size:12px" data-tip="行動電話 ${r.tel2||'—'}">${r.tel2||'—'}</td>
       <td>
         <select class="rs-select" data-field="status" data-cisid="${r.cisid}">
           <option value=""${r.status===''?' selected':''}>未回收</option>
@@ -972,11 +1016,11 @@ function renderCases(){
           <option value="異常"${r.report==='異常'?' selected':''}>異常</option>
         </select>
       </td>
-      <td><span class="rs-cb is-warn ${r.referral?'is-on':''}" data-field="referral" data-cisid="${r.cisid}"></span></td>
-      <td><span class="rs-cb is-bad ${r.missed?'is-on':''}" data-field="missed" data-cisid="${r.cisid}"></span></td>
-      <td class="rs-mono" style="font-size:12px;color:var(--ink-mute)">${r.dispatch||State.session.date}</td>
-      <td class="rs-mono" style="font-size:12px;color:${r.sendDate?'var(--ink)':'var(--ink-faint)'}">${r.sendDate||'—'}</td>
-      <td><span class="rs-cb is-bad ${r.cancel?'is-on':''}" data-field="cancel" data-cisid="${r.cisid}"></span></td>
+      <td><span class="rs-cb is-warn ${r.referral?'is-on':''}" data-field="referral" data-cisid="${r.cisid}" data-tip="待轉介（陽性個案需安排腸鏡）"></span></td>
+      <td><span class="rs-cb is-bad ${r.missed?'is-on':''}" data-field="missed" data-cisid="${r.cisid}" data-tip="已轉介但個案未做腸鏡"></span></td>
+      <td class="rs-mono" style="font-size:12px;color:var(--ink-mute)" data-tip="發試管日（行動醫院當天）">${r.dispatch||State.session.date}</td>
+      <td class="rs-mono" style="font-size:12px;color:${r.sendDate?'var(--ink)':'var(--ink-faint)'}" data-tip="送回試管日（點編號自動填）">${r.sendDate||'—'}</td>
+      <td><span class="rs-cb is-bad ${r.cancel?'is-on':''}" data-field="cancel" data-cisid="${r.cisid}" data-tip="取消追蹤（個案不再追）"></span></td>
     </tr>`;
   }).join('');
   // bind
@@ -1068,6 +1112,14 @@ function autoFocusByTail(q){
   }
 }
 document.querySelectorAll('#topbar-tabs button').forEach(b=>b.onclick=()=>{State.session.tab=b.dataset.tab;renderTabsCount();renderCases()});
+document.getElementById('btn-import-report').onclick = async ()=>{
+  await dialog(
+    `<h3>匯入檢驗報告</h3>
+     <p>此功能 v0.3 上線。屆時可拖入檢驗單位給的報告 xls，系統依身分證/編號自動填回對應個案的「報告狀態」（正常/異常）、判斷是否需轉介。</p>
+     <p style="color:var(--ink-mute);font-size:12px">需要先取得實際報告 xls 規格才能實作對應邏輯。</p>`,
+    [{label:'知道了', primary:true}]
+  );
+};
 
 // global keyboard
 document.addEventListener('keydown',e=>{

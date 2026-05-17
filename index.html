@@ -637,7 +637,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.6';
+const APP_VERSION = 'v0.3.7';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1442,58 +1442,90 @@ function printSendList(){
     <td class="kind k-${s.kinds==='腸'?'f':s.kinds==='胃'?'g':'b'}">${s.kinds}</td>
   </tr>`).join('');
 
+  const totalF = countF + countB;
+  const totalG = countG + countB;
+  const summaryLine = `送管日 <b>${target}</b>　腸共 <b>${totalF}</b> 支　胃共 <b>${totalG}</b> 支`;
+
   const html = `<!doctype html><html lang="zh-Hant"><head>
 <meta charset="utf-8"><title>送驗清單 ${target}</title>
 <style>
 @page{size:A4 portrait;margin:1cm}
 *{box-sizing:border-box}
 body{font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;font-size:11pt;color:#000;margin:0;padding:0;line-height:1.4}
-.head{text-align:center;margin-bottom:14px}
-.head h1{font-size:18pt;margin:0 0 4px;font-weight:700;letter-spacing:0.15em}
-.head h2{font-size:13pt;margin:0 0 6px;font-weight:500}
+.pane{padding-bottom:8px}
+.head{text-align:center;margin-bottom:10px}
+.head h1{font-size:17pt;margin:0 0 4px;font-weight:700;letter-spacing:0.15em}
+.head h2{font-size:13pt;margin:0 0 4px;font-weight:500}
 .head .sub{font-size:10.5pt;color:#333}
-.meta{display:flex;gap:18px;font-size:10pt;color:#333;padding:6px 8px;border-top:1.5px solid #000;border-bottom:1.5px solid #000;margin-bottom:10px}
-.meta b{color:#000}
-.cols{column-count:3;column-gap:14px;column-rule:1px dashed #ccc}
-table{width:100%;border-collapse:collapse;font-size:11pt}
+.meta{display:flex;gap:14px;font-size:10pt;color:#333;padding:5px 8px;border-top:1.2px solid #000;border-bottom:1.2px solid #000;margin-bottom:8px}
+.meta b{color:#000;font-family:Consolas,monospace}
+.cols{column-count:3;column-gap:12px;column-rule:1px dashed #ccc}
+table{width:100%;border-collapse:collapse;font-size:10.5pt}
 tr{break-inside:avoid;page-break-inside:avoid}
-td{border:1px solid #888;padding:3px 6px;vertical-align:middle}
+td{border:1px solid #888;padding:2px 6px;vertical-align:middle}
 td.seq{width:30px;text-align:center;font-family:Consolas,monospace;color:#666;font-size:9pt}
 td.num{width:54px;text-align:center;font-family:Consolas,monospace;font-weight:700;font-size:12pt;letter-spacing:0.02em}
 td.kind{text-align:center;font-size:10.5pt;font-weight:700}
 td.kind.k-f{background:#fff8e6}
 td.kind.k-g{background:#eef5ff}
 td.kind.k-b{background:#fff;color:#a14}
-.foot{margin-top:32px;display:flex;justify-content:flex-end;gap:48px;align-items:flex-end;font-size:11.5pt}
-.sig{display:flex;align-items:flex-end;gap:8px}
-.sig-line{display:inline-block;border-bottom:1px solid #000;min-width:180px;height:28px}
-.ft{font-size:7.5pt;color:#666;margin-top:18px;display:flex;justify-content:space-between;padding-top:6px;border-top:1px dashed #ccc}
+.summary{margin-top:14px;font-size:12pt;padding:8px 10px;background:#f5f5f0;border:1px solid #888;border-radius:3px;display:flex;justify-content:space-between;align-items:center;gap:14px}
+.summary .totals b{font-family:Consolas,monospace;font-size:13pt;color:#000}
+.sig{display:inline-flex;align-items:flex-end;gap:8px;font-size:11.5pt}
+.sig-line{display:inline-block;border-bottom:1.4px solid #000;min-width:160px;height:26px}
+.tear{margin:18px 0;text-align:center;font-family:Consolas,monospace;font-size:10pt;color:#666;border-top:2px dashed #888;padding-top:6px;letter-spacing:0.3em}
+.tear .scis{font-size:13pt;vertical-align:middle}
+.ft{font-size:7.5pt;color:#666;margin-top:12px;display:flex;justify-content:space-between;padding-top:5px;border-top:1px dotted #aaa}
+.pane.lower .head h2{font-size:12pt}
+.pane.lower .summary{margin-top:10px}
 .bar{padding:6px;background:#f4f2ec;border:1px solid #999;text-align:center;margin-bottom:10px;font-size:10pt;display:none}
 @media screen{.bar{display:block}body{padding:20px;max-width:920px;margin:0 auto;background:#f4f2ec}.cols{background:#fff;padding:14px;border:1px solid #ccc}}
 @media print{.bar{display:none}}
 </style></head><body>
 <div class="bar">
   <button onclick="window.print()" style="padding:6px 14px;font-size:13px">🖨 列印</button>
+  <span style="margin-left:12px;color:#666">上聯交代檢所 · 沿虛線剪下 · 下聯本所收執</span>
 </div>
-<div class="head">
-  <h1>臺南市佳里區衛生所</h1>
-  <h2>檢體送驗清單</h2>
-  <div class="sub">行動醫院場次 ${sessionROC} · 送管日 ${target}</div>
+
+<!-- 上聯：代檢所帶走 -->
+<div class="pane upper">
+  <div class="head">
+    <h1>臺南市佳里區衛生所</h1>
+    <h2>檢體送驗清單</h2>
+    <div class="sub">行動醫院場次 ${sessionROC} · 送管日 ${target} · 列印於 ${printedAt}</div>
+  </div>
+  <div class="meta">
+    <span>共 <b>${specimenCount}</b> 支 / <b>${countAll}</b> 人</span>
+    <span>腸 <b>${totalF}</b> 支</span>
+    <span>胃 <b>${totalG}</b> 支</span>
+    ${countB?`<span>同人腸+胃 <b>${countB}</b> 人</span>`:''}
+    <span style="margin-left:auto;font-size:9pt;color:#666">[上聯] 代檢所帶走</span>
+  </div>
+  <div class="cols">
+    <table><tbody>${rows}</tbody></table>
+  </div>
+  <div class="summary">
+    <div class="totals">${summaryLine}</div>
+    <div class="sig">收檢人簽收：<span class="sig-line"></span></div>
+  </div>
 </div>
-<div class="meta">
-  <span>共 <b>${specimenCount}</b> 支 / <b>${countAll}</b> 人</span>
-  <span>腸 <b>${countF + countB}</b></span>
-  <span>胃 <b>${countG + countB}</b></span>
-  ${countB?`<span>同人腸+胃 <b>${countB}</b> 人</span>`:''}
-  <span style="margin-left:auto">列印於 ${printedAt}</span>
+
+<!-- 撕線 -->
+<div class="tear"><span class="scis">✂</span>  - - - - - - - - - - 沿虛線剪下 - - - - - - - - - -</div>
+
+<!-- 下聯：本所收執 -->
+<div class="pane lower">
+  <div class="head">
+    <h1>臺南市佳里區衛生所</h1>
+    <h2>檢體送驗 — 收執聯</h2>
+    <div class="sub">行動醫院場次 ${sessionROC}</div>
+  </div>
+  <div class="summary">
+    <div class="totals">${summaryLine}</div>
+    <div class="sig">收檢人簽收：<span class="sig-line"></span></div>
+  </div>
+  <div class="ft"><span>● 本聯由衛生所留存作為送驗憑證</span><span>檢體回收系統 · ${APP_VERSION}</span></div>
 </div>
-<div class="cols">
-  <table><tbody>${rows}</tbody></table>
-</div>
-<div class="foot">
-  <div class="sig">收檢人簽收：<span class="sig-line"></span></div>
-</div>
-<div class="ft"><span>● 此清單作為檢體交接憑證</span><span>檢體回收系統 · ${APP_VERSION}</span></div>
 </body></html>`;
 
   const w = window.open('','_blank','width=920,height=1100');

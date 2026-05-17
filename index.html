@@ -554,21 +554,17 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
   <!-- ─── CASES VIEW ─── -->
   <div class="view-cases" id="view-cases">
     <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap">
-      <label class="rs-recovdate" data-tip="共用日期：操作模式選哪個就寫入哪個欄位">
+      <label class="rs-recovdate" data-tip="回收日：點 [腸][胃] chip 標 V 時，把此日期記為該人回收日">
         <svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="3" width="10" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M2 6 h10 M5 1.5 v2 M9 1.5 v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         <div>
-          <div class="rs-recovdate-lbl">日期</div>
+          <div class="rs-recovdate-lbl">回收日</div>
           <input type="date" id="batch-date">
         </div>
       </label>
-      <div class="rs-mode-seg" id="mode-seg" data-tip="批次模式：點 [腸][胃] 按鈕時，依模式決定寫入哪邊">
-        <button data-mode="recov" class="is-on">
-          <span class="rs-mode-dot"></span>回收日
-        </button>
-        <button data-mode="send">
-          <span class="rs-mode-dot"></span>送管日
-        </button>
-      </div>
+      <button class="rs-btn is-primary" id="btn-batch-send" data-tip="一鍵送管：將所有「已回收（V）但未填送管日」的檢體批次寫入送管日">
+        <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 4 h7 l2 -2 v6 l-2 -2 h-7 z M5 7 v3 h-2 l3 2 l3 -2 h-2 v-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        一鍵送管
+      </button>
       <div class="rs-topbar-divider"></div>
       <div id="filter-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       <div style="flex:1;min-width:8px"></div>
@@ -639,8 +635,9 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
     </div>
 
     <div class="rs-hints" style="padding:8px 20px;background:var(--surface);border-top:1px solid var(--line)">
-      <span>模式 <span class="rs-kbd">回收日</span>：點按鈕 = 標 V + 記回收日</span>
-      <span>模式 <span class="rs-kbd">送管日</span>：點按鈕 = 寫送管日（需先有回收日）</span>
+      <span>點 <span class="rs-kbd">腸/胃</span> = 標 V + 記回收日</span>
+      <span><span class="rs-kbd">一鍵送管</span> = 全部 V 未送的批次寫入</span>
+      <span><span class="rs-kbd">送管欄</span> 點按 = 彈日期選</span>
       <span><span class="rs-kbd">/</span> 搜尋</span>
       <span><span class="rs-kbd">↵</span> 末 3 碼 Enter 自動定位</span>
       <span style="margin-left:auto;color:var(--ink-faint)" class="rs-mono">樂觀更新 · 試算表後援同步</span>
@@ -653,7 +650,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.12';
+const APP_VERSION = 'v0.3.13';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1066,11 +1063,9 @@ async function openSession(date){
   document.getElementById('topbar-session-label').textContent = date;
   document.getElementById('topbar-session-roc').textContent = '· ' + rocToDate(date);
   document.getElementById('topbar-session-block').classList.remove('hidden');
-  // init picker date：預設場次日（行醫日），開新場次時不沿用其他場次的 picker 值
+  // init picker date：預設場次日（行醫日）
   State.batchDate = rocToDate(date) || todayDateStr();
   document.getElementById('batch-date').value = State.batchDate;
-  State.batchMode = localStorage.getItem(MODE_KEY) || 'recov';
-  applyModeUI();
   // load recov + restock + subsidy stores
   State.recovStore = loadRecovStore(date);
   State.restock = loadRestock(date);
@@ -1260,21 +1255,16 @@ function chipHTML(p, kind){ // kind = 'fobt' or 'gastric'
   const sendDate = obj.sendDate||'';
   const recovDate = getRecov(p.cisid, kind);
   const isSent = !!sendDate;
-  // 鎖定條件：回收日模式 + 已送管 → 不能再改回收狀態（已寄出）
-  const isLocked = State.batchMode==='recov' && isSent;
-  // 送管日模式 + 無回收日 → 不能點
-  const sendBlocked = State.batchMode==='send' && !isDone && !isSent;
-  const blocked = isLocked || sendBlocked;
+  // 已送管 → 不能再改回收狀態
+  const blocked = isSent;
   let cls = isSent ? 'is-sent' : (isDone ? 'is-recov' : '');
   if (blocked) cls += ' is-blocked';
   const dotMark = isSent ? '→' : (isDone ? '✓' : '');
   let tip = `${label}篩 · ${obj.cisid}`;
   if (isDone) tip += `\n已回收${recovDate?' ('+recovDate+')':''}`;
   if (isSent) tip += `\n送管 ${sendDate}`;
-  if (isLocked) tip += '\n🔒 已送管 不能改回收';
-  else if (sendBlocked) tip += '\n🔒 [送管日模式] 需先有回收日';
-  else if (State.batchMode==='recov') tip += '\n[回收日模式] 點按 = 切換已回收';
-  else tip += '\n[送管日模式] 點按 = 寫入送管日';
+  if (blocked) tip += '\n🔒 已送管 不能改回收（請用「重補檢體」reset）';
+  else tip += '\n點按 = 切換已回收';
   const attr = blocked ? 'data-blocked="1"' : '';
   return `<button class="rs-tg ${cls}" data-chip="${kind}" data-cisid="${p.cisid}" ${attr} data-tip="${tip}">
     <span class="rs-tg-dot">${dotMark}</span>${label}
@@ -1284,10 +1274,9 @@ function sendCellHTML(p, kind){
   const obj = p[kind];
   if(!obj) return `<span class="rs-sendcell is-na" data-tip="不適用">—</span>`;
   if(obj.sendDate) return `<span class="rs-sendcell is-set" data-cisid="${p.cisid}" data-kind="${kind}" data-tip="點按取消送管日">${obj.sendDate}</span>`;
-  // 可填條件：已標 V (本機或試算表)；單獨點按要依賴 obj.status (sheet 同步來源)
   const canSend = obj.status==='V' || !!getRecov(p.cisid, kind);
   if(!canSend) return `<span class="rs-sendcell is-locked" data-tip="需先標記已回收（${kind==='fobt'?'腸':'胃'}篩）">—</span>`;
-  return `<span class="rs-sendcell" data-cisid="${p.cisid}" data-kind="${kind}" data-send-click data-tip="點按寫入：${dateToMMDD(State.batchDate)}">點填</span>`;
+  return `<span class="rs-sendcell" data-cisid="${p.cisid}" data-kind="${kind}" data-send-click data-tip="點按選日期寫入送管日">點填</span>`;
 }
 function reportSelHTML(p, kind){
   const obj = p[kind];
@@ -1344,9 +1333,13 @@ function bindRowEvents(){
   document.querySelectorAll('[data-toggle-all]').forEach(el=>{
     el.onclick=()=>toggleAll(el.dataset.toggleAll);
   });
-  // send-cell direct click → write send date (uses current picker)
+  // send-cell direct click → pop date dialog → write send date
   document.querySelectorAll('[data-send-click]').forEach(el=>{
-    el.onclick=()=>setSendDate(el.dataset.cisid, el.dataset.kind, dateToMMDD(State.batchDate));
+    el.onclick=async()=>{
+      const ds = await pickDateDialog(todayDateStr(), `寫入送管日 (${el.dataset.cisid.slice(-4)}-${el.dataset.kind==='fobt'?'腸':'胃'})`);
+      if(!ds) return;
+      setSendDate(el.dataset.cisid, el.dataset.kind, dateToMMDD(ds));
+    };
   });
   document.querySelectorAll('.rs-sendcell.is-set').forEach(el=>{
     el.onclick=()=>setSendDate(el.dataset.cisid, el.dataset.kind, '');
@@ -1369,40 +1362,25 @@ async function toggleAll(cisid){
   let acted = 0;
   for (const kind of ['fobt','gastric']){
     const obj = p[kind]; if(!obj) continue;
-    // skip blocked: recov mode + already sent → cannot change recov
-    if (State.batchMode==='recov' && obj.sendDate) continue;
-    // skip: send mode + no recov yet
-    if (State.batchMode==='send' && !obj.status && !obj.sendDate) continue;
+    if (obj.sendDate) continue; // 已送管的不再切換回收
     await chipClick(cisid, kind);
     acted++;
   }
-  if(!acted) toast('沒有可操作的項目','warn');
+  if(!acted) toast('沒有可操作的項目（已送管不能改）','warn');
 }
 
 async function chipClick(cisid, kind){
   const p = getMerged(cisid); if(!p) return;
   const obj = p[kind]; if(!obj) return;
-  const sendStr = dateToMMDD(State.batchDate);
-  if(State.batchMode==='recov'){
-    if(obj.sendDate){
-      toast('已送管，不能改回收狀態','warn'); return;
-    }
-    if(obj.status==='V'){
-      setRecov(cisid, kind, '');
-      await updateField(cisid, kind, {status:''});
-    } else {
-      setRecov(cisid, kind, State.batchDate);
-      await updateField(cisid, kind, {status:'V'});
-    }
+  if(obj.sendDate){
+    toast('已送管，不能改回收狀態','warn'); return;
+  }
+  if(obj.status==='V'){
+    setRecov(cisid, kind, '');
+    await updateField(cisid, kind, {status:''});
   } else {
-    if(!obj.status && !obj.sendDate){
-      toast('需先在「回收日模式」標記已回收','warn'); return;
-    }
-    if(obj.sendDate){
-      await updateField(cisid, kind, {sendDate:''});
-    } else {
-      await updateField(cisid, kind, {sendDate:sendStr});
-    }
+    setRecov(cisid, kind, State.batchDate);
+    await updateField(cisid, kind, {status:'V'});
   }
 }
 async function setSendDate(cisid, kind, dateRoc){
@@ -1464,12 +1442,6 @@ document.getElementById('batch-date').onchange = e=>{
   localStorage.setItem(PICKER_KEY, State.batchDate);
   renderCases(); // update tooltips
 };
-document.querySelectorAll('#mode-seg button').forEach(b=>b.onclick=()=>{
-  State.batchMode = b.dataset.mode;
-  localStorage.setItem(MODE_KEY, State.batchMode);
-  applyModeUI();
-  renderCases();
-});
 document.getElementById('cases-search').oninput = e=>{ State.caseSearch=e.target.value; renderCases(); autoFocusByTail(e.target.value); };
 document.getElementById('cases-search').onkeydown = e=>{
   if(e.key==='Enter' && State.caseFocus){
@@ -1495,8 +1467,79 @@ function autoFocusByTail(q){
   }
 }
 document.getElementById('btn-print-pick').onclick = ()=>printPickList();
-document.getElementById('btn-print-send').onclick = ()=>printSendList();
+document.getElementById('btn-print-send').onclick = ()=>printSendListWithPicker();
 document.getElementById('btn-reissue').onclick = ()=>openReissueDialog();
+document.getElementById('btn-batch-send').onclick = ()=>batchSendAll();
+
+/* ── 共用日期選擇 dialog ── */
+function pickDateDialog(defaultDate, title){
+  return new Promise(resolve=>{
+    const d=document.getElementById('dialog'); const o=document.getElementById('overlay');
+    d.innerHTML = `
+      <h3>${title}</h3>
+      <p>選擇日期（將以 MM/DD 格式寫入試算表）</p>
+      <input type="date" class="rs-input is-mono" id="pick-date-inp" value="${defaultDate}" style="font-size:18px;padding:8px 12px;width:200px">
+      <div class="rs-dialog-actions">
+        <button class="rs-btn" data-act="cancel">取消</button>
+        <button class="rs-btn is-primary" data-act="ok">確定</button>
+      </div>
+    `;
+    o.classList.add('is-show');
+    setTimeout(()=>document.getElementById('pick-date-inp').focus(), 50);
+    const close=v=>{o.classList.remove('is-show');resolve(v);};
+    d.querySelector('[data-act="ok"]').onclick=()=>close(document.getElementById('pick-date-inp').value);
+    d.querySelector('[data-act="cancel"]').onclick=()=>close(null);
+    o.onclick=e=>{if(e.target===o)close(null);};
+    d.querySelector('input').onkeydown=e=>{
+      if(e.key==='Enter') close(document.getElementById('pick-date-inp').value);
+      if(e.key==='Escape') close(null);
+    };
+  });
+}
+
+/* ── 一鍵送管：所有 V 且無 sendDate 的批次填入 ── */
+async function batchSendAll(){
+  if(!State.session?.merged?.length){ toast('無資料','warn'); return; }
+  const list = [];
+  for(const p of State.session.merged){
+    for(const k of ['fobt','gastric']){
+      const o = p[k];
+      if(o && o.status==='V' && !o.sendDate) list.push({cisid:p.cisid, kind:k});
+    }
+  }
+  if(!list.length){ toast('無可送管項目（需已回收且未送管）','warn'); return; }
+  const fCnt = list.filter(x=>x.kind==='fobt').length;
+  const gCnt = list.filter(x=>x.kind==='gastric').length;
+  const dateStr = await pickDateDialog(todayDateStr(), `一鍵送管 — 共 ${list.length} 件（腸 ${fCnt} / 胃 ${gCnt}）`);
+  if(!dateStr) return;
+  const mmdd = dateToMMDD(dateStr);
+  setSync('syncing','批次送管中');
+  let ok=0, fail=0;
+  for(const c of list){
+    try{ await updateField(c.cisid, c.kind, {sendDate: mmdd}); ok++; }
+    catch(e){ fail++; }
+  }
+  setSync('ok','已同步');
+  toast(`一鍵送管完成：${ok} 件${fail?' / '+fail+' 失敗':''}（送管日 ${mmdd}）`,'ok');
+}
+
+/* ── 列印送管：先彈日期窗 ── */
+async function printSendListWithPicker(){
+  if(!State.session?.merged?.length){ toast('無資料','warn'); return; }
+  // 收集所有已存在的送管日（讓使用者選歷史日期更方便）
+  const dates = new Set();
+  for(const p of State.session.merged){
+    if(p.fobt?.sendDate) dates.add(p.fobt.sendDate);
+    if(p.gastric?.sendDate) dates.add(p.gastric.sendDate);
+  }
+  const dateStr = await pickDateDialog(todayDateStr(), `列印送管清單 — 選擇要列印哪天的`);
+  if(!dateStr) return;
+  // 暫時覆寫 batchDate 給 printSendList 用
+  const orig = State.batchDate;
+  State.batchDate = dateStr;
+  printSendList();
+  State.batchDate = orig;
+}
 
 function printSendList(){
   if(!State.session?.merged?.length){ toast('無資料','warn'); return; }

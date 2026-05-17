@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>腸胃篩檢體回收系統</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f3f4f6;--card:#fff;--bd:#d1d5db;--pri:#0ea5e9;--pri2:#0284c7;--ok:#10b981;--warn:#f59e0b;--err:#ef4444;--mut:#6b7280;--txt:#111827}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;font-family:"Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif;background:var(--bg);color:var(--txt)}
+.app{max-width:1080px;margin:0 auto;padding:20px}
+h1{margin:0 0 4px;font-size:22px}
+h2{margin:0 0 12px;font-size:16px;color:var(--pri2);border-left:4px solid var(--pri);padding-left:8px}
+.sub{color:var(--mut);font-size:13px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.drop-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:760px){.drop-grid{grid-template-columns:1fr}}
+.drop{border:2px dashed var(--bd);border-radius:8px;padding:14px;text-align:center;cursor:pointer;background:#fafafa;transition:.2s;position:relative}
+.drop:hover,.drop.hover{border-color:var(--pri);background:#eff6ff}
+.drop.ok{border-color:var(--ok);background:#ecfdf5}
+.drop b{display:block;margin-bottom:4px;font-size:14px}
+.drop .hint{font-size:12px;color:var(--mut)}
+.drop .stat{margin-top:6px;font-size:12px;color:var(--ok);font-weight:600;min-height:16px}
+.drop input{display:none}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600}
+.tag.chang{background:#fef3c7;color:#92400e}
+.tag.wei{background:#dbeafe;color:#1e40af}
+.tag.free{background:#fce7f3;color:#9d174d}
+.tag.refuse{background:#fee2e2;color:#991b1b}
+.btn{padding:8px 16px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.15s}
+.btn-pri{background:var(--pri);color:#fff}
+.btn-pri:hover{background:var(--pri2)}
+.btn-pri:disabled{background:#9ca3af;cursor:not-allowed}
+.btn-gh{background:#fff;color:var(--txt);border:1px solid var(--bd)}
+.btn-gh:hover{background:#f3f4f6}
+.btn-ok{background:var(--ok);color:#fff}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th,.tbl td{padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:left}
+.tbl th{background:#f9fafb;font-weight:600;color:var(--mut)}
+.tbl tr:hover{background:#f9fafb}
+.tbl tr.checked{background:#fef3c7}
+.scroll{max-height:340px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px}
+.cell{padding:10px;background:#f9fafb;border-radius:6px;border:1px solid var(--bd);text-align:center}
+.cell .n{font-size:24px;font-weight:700;color:var(--pri2)}
+.cell .l{font-size:12px;color:var(--mut)}
+.cell.warn .n{color:var(--warn)}
+.cell.ok .n{color:var(--ok)}
+.cell.refuse .n{color:var(--err)}
+.msg{padding:10px;border-radius:6px;margin:8px 0;font-size:14px}
+.msg.info{background:#dbeafe;color:#1e40af;border-left:3px solid var(--pri)}
+.msg.warn{background:#fef3c7;color:#92400e;border-left:3px solid var(--warn)}
+.msg.err{background:#fee2e2;color:#991b1b;border-left:3px solid var(--err)}
+.msg.ok{background:#d1fae5;color:#065f46;border-left:3px solid var(--ok)}
+.hidden{display:none}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+.toolbar .actions{display:flex;gap:6px}
+.chk{width:18px;height:18px;cursor:pointer;accent-color:var(--pri)}
+.foot{margin-top:20px;text-align:center;font-size:11px;color:var(--mut)}
+.badge{position:fixed;bottom:8px;right:8px;font-size:10px;color:var(--mut);background:rgba(255,255,255,.8);padding:2px 6px;border-radius:4px}
+.date-pick{padding:6px 10px;border:1px solid var(--bd);border-radius:6px;font-size:14px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:s 0.7s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>腸胃篩檢體回收系統</h1>
+<p class="sub">行動醫院每場結束後上傳 3 個檔案 → 自動比對 → 寫入 Google Sheets</p>
+
+<div class="card">
+<h2>① 上傳 3 個來源檔</h2>
+<div class="drop-grid">
+  <label class="drop" id="d6e">
+    <b><span class="tag chang">腸篩</span> 6E 已發已掛</b>
+    <div class="hint">6E*.xlsx</div>
+    <div class="stat" id="s6e">未上傳</div>
+    <input type="file" accept=".xlsx,.xls" data-k="r6e">
+  </label>
+  <label class="drop" id="d6f">
+    <b><span class="tag wei">胃篩</span> 6F 已發已掛</b>
+    <div class="hint">6F*.xlsx</div>
+    <div class="stat" id="s6f">未上傳</div>
+    <input type="file" accept=".xlsx,.xls" data-k="r6f">
+  </label>
+  <label class="drop" id="dh">
+    <b>衛生所查詢（當日全部掛號）</b>
+    <div class="hint">衛生所查詢*.xls / .xlsx</div>
+    <div class="stat" id="sh">未上傳</div>
+    <input type="file" accept=".xlsx,.xls" data-k="rh">
+  </label>
+</div>
+</div>
+
+<div id="step2" class="card hidden">
+<h2>② 自動比對結果</h2>
+<div class="summary" id="sumGrid"></div>
+<div class="msg info" id="dateInfo"></div>
+</div>
+
+<div id="step3" class="card hidden">
+<h2>③ 勾選「免掛號做 FOBT」的人</h2>
+<div class="msg warn">下表是<b>年齡不在 45-75 但有出現在衛生所掛號</b>的人。請勾選當天實際有做 FOBT 的人，未勾選者視為「拒做」（不寫入試算表）。</div>
+<div class="toolbar">
+  <div><b>候選清單</b> <span id="freeCount" style="color:var(--mut)">0 人</span></div>
+  <div class="actions">
+    <button class="btn btn-gh" id="btnAll">全選</button>
+    <button class="btn btn-gh" id="btnNone">全不選</button>
+  </div>
+</div>
+<div class="scroll">
+<table class="tbl" id="freeTbl">
+<thead><tr><th style="width:40px"></th><th>掛號序號</th><th>姓名</th><th>身分證</th><th>性別</th><th>年齡</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+
+<div id="step4" class="card hidden">
+<h2>④ 寫入 Google 試算表</h2>
+<div class="row" style="margin-bottom:10px">
+  <label>日期：<input type="text" class="date-pick" id="datePick" maxlength="7" pattern="[0-9]{7}"></label>
+  <span style="color:var(--mut);font-size:13px">→ 寫入分頁「行醫腸篩{日期}」「行醫胃篩{日期}」</span>
+</div>
+<div id="writeSummary" class="summary"></div>
+<div class="row">
+  <button class="btn btn-pri" id="btnSync"><span id="syncTxt">寫入 Google Sheets</span></button>
+  <button class="btn btn-gh" id="btnDl">下載 XLSX 備份</button>
+</div>
+<div id="syncMsg"></div>
+</div>
+
+<div class="foot">v0.1.0 &nbsp;|&nbsp; Sample-recovery</div>
+</div>
+<div class="badge" id="ver">v0.1.0</div>
+
+<script>
+const state={r6e:null,r6f:null,rh:null,date:'',freeCandidates:[],freeChecked:new Set()};
+
+// ===== File upload =====
+document.querySelectorAll('.drop input').forEach(inp=>{
+  const drop=inp.closest('.drop');
+  inp.addEventListener('change',e=>handle(e.target.files[0],inp.dataset.k,drop));
+  ['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('hover')}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hover')}));
+  drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)handle(f,inp.dataset.k,drop)});
+});
+
+async function handle(file,key,drop){
+  if(!file)return;
+  const stat=drop.querySelector('.stat');
+  stat.textContent='讀取中...';
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array',cellDates:false,cellNF:false});
+    const sh=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(sh,{defval:'',raw:false});
+    state[key]={file:file.name,rows};
+    stat.textContent=`${file.name} (${rows.length} 筆)`;
+    drop.classList.add('ok');
+    tryProcess();
+  }catch(err){
+    stat.textContent='讀取失敗: '+err.message;
+    drop.classList.remove('ok');
+  }
+}
+
+// ===== Process / Match =====
+function tryProcess(){
+  if(!state.r6e||!state.r6f||!state.rh)return;
+  // Detect date from sdate93 (民國 YYYMMDD) - id93 prefix is 西元
+  const h=state.rh.rows;
+  const firstSd=h.find(r=>r.sdate93)?.sdate93||'';
+  state.date=String(firstSd).trim();
+  document.getElementById('datePick').value=state.date;
+
+  // Build maps
+  const ids6E=new Set(state.r6e.rows.map(r=>String(r['身份證']||r['身分證']||'').trim()).filter(Boolean));
+  const ids6F=new Set(state.r6f.rows.map(r=>String(r['身份證']||r['身分證']||'').trim()).filter(Boolean));
+
+  // Free-registration candidates: 衛生所查詢 中年齡 <45 或 >75 且不在 6E
+  const cand=h.filter(r=>{
+    const age=parseInt(r.AGE||r.age||'0',10);
+    const id=String(r.idno||'').trim();
+    return id && (age<45||age>75) && !ids6E.has(id);
+  }).map(r=>({
+    seq:String(parseInt(String(r.id93||'').slice(-5),10)||'').replace(/^NaN$/,''),
+    seqRaw:String(r.id93||''),
+    name:r.name||'',
+    idno:String(r.idno||'').trim(),
+    sex:r.sex||'',
+    age:parseInt(r.AGE||r.age||'0',10),
+    tel1:r.tel1||'',
+    tel2:r.tel2||'',
+    cellular:r.cellular||''
+  })).sort((a,b)=>a.seqRaw.localeCompare(b.seqRaw));
+  state.freeCandidates=cand;
+  state.freeChecked=new Set();
+
+  // Show step 2
+  document.getElementById('step2').classList.remove('hidden');
+  const cell=(n,l,cls='')=>`<div class="cell ${cls}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  document.getElementById('sumGrid').innerHTML=
+    cell(state.r6e.rows.length,'腸篩 6E 已掛已發')+
+    cell(state.r6f.rows.length,'胃篩 6F 已掛已發')+
+    cell(h.length,'衛生所查詢總筆數')+
+    cell(cand.length,'候選免掛號 (年齡不符)','warn');
+  document.getElementById('dateInfo').innerHTML=`偵測到行動醫院日期：<b>${state.date||'(無法偵測)'}</b>　→ 將寫入分頁「行醫腸篩${state.date}」「行醫胃篩${state.date}」`;
+
+  renderFree();
+  document.getElementById('step3').classList.remove('hidden');
+  document.getElementById('step4').classList.remove('hidden');
+  updateWriteSummary();
+}
+
+function renderFree(){
+  const tbody=document.querySelector('#freeTbl tbody');
+  tbody.innerHTML=state.freeCandidates.map((p,i)=>`<tr data-i="${i}" class="${state.freeChecked.has(i)?'checked':''}">
+    <td><input type="checkbox" class="chk" data-i="${i}" ${state.freeChecked.has(i)?'checked':''}></td>
+    <td>${p.seq}</td>
+    <td>${p.name}</td>
+    <td>${p.idno}</td>
+    <td>${p.sex}</td>
+    <td>${p.age}</td>
+  </tr>`).join('');
+  tbody.querySelectorAll('input.chk').forEach(c=>c.addEventListener('change',e=>{
+    const i=+e.target.dataset.i;
+    if(e.target.checked)state.freeChecked.add(i);else state.freeChecked.delete(i);
+    e.target.closest('tr').classList.toggle('checked',e.target.checked);
+    updateFreeCount();updateWriteSummary();
+  }));
+  updateFreeCount();
+}
+function updateFreeCount(){
+  document.getElementById('freeCount').textContent=`共 ${state.freeCandidates.length} 人，已勾選 ${state.freeChecked.size} 人（免掛號做）`;
+}
+document.getElementById('btnAll').onclick=()=>{state.freeCandidates.forEach((_,i)=>state.freeChecked.add(i));renderFree();updateWriteSummary()};
+document.getElementById('btnNone').onclick=()=>{state.freeChecked.clear();renderFree();updateWriteSummary()};
+
+// ===== Build write payload =====
+function buildPayload(){
+  const date=document.getElementById('datePick').value.trim();
+  // 腸篩 = 6E 全部 + 勾選免掛號做
+  const phone=(r)=>{
+    const t1=String(r['電話1']||r.tel1||'').replace(/[^\d]/g,'');
+    const cell=String(r['行動電話']||r.cellular||'').replace(/[^\d]/g,'');
+    const c=cell?(cell.startsWith('0')?cell:'0'+cell):'';
+    return [t1,c];
+  };
+  const fromReg=(r)=>{
+    const [t1,c]=phone(r);
+    return {
+      name:r['姓名']||'',
+      idno:String(r['身份證']||r['身分證']||'').trim(),
+      tel1:t1,tel2:c,
+      seq:String(r['掛號序號']||'').trim()
+    };
+  };
+  const fromVisit=(p)=>{
+    const t1=String(p.tel1||'').replace(/[^\d]/g,'');
+    const cell=String(p.cellular||'').replace(/[^\d]/g,'');
+    const c=cell?(cell.startsWith('0')?cell:'0'+cell):'';
+    return {
+      name:p.name,idno:p.idno,
+      tel1:t1,tel2:c,
+      seq:p.seq
+    };
+  };
+  const free=[...state.freeChecked].map(i=>fromVisit(state.freeCandidates[i]));
+  const chang=[...state.r6e.rows.map(fromReg),...free];
+  const wei=state.r6f.rows.map(fromReg);
+  return {date,chang,wei};
+}
+function updateWriteSummary(){
+  const p=buildPayload();
+  const cell=(n,l,cls='')=>`<div class="cell ${cls}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  document.getElementById('writeSummary').innerHTML=
+    cell(p.chang.length,'腸篩寫入 (6E + 免掛號)','ok')+
+    cell(p.wei.length,'胃篩寫入 (6F)','ok')+
+    cell(state.freeCandidates.length-state.freeChecked.size,'拒做 (不寫入)','refuse');
+}
+
+// ===== Sync to Google Sheets =====
+document.getElementById('btnSync').onclick=async()=>{
+  const btn=document.getElementById('btnSync');
+  const txt=document.getElementById('syncTxt');
+  const msg=document.getElementById('syncMsg');
+  msg.innerHTML='';
+  const p=buildPayload();
+  if(!p.date||p.date.length!==7){msg.innerHTML='<div class="msg err">日期格式錯誤，需 7 位數字（如 1150516）</div>';return}
+  if(p.chang.length===0&&p.wei.length===0){msg.innerHTML='<div class="msg err">沒有資料可寫入</div>';return}
+  btn.disabled=true;txt.innerHTML='<span class="spin"></span>寫入中...';
+  try{
+    const res=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    const j=await res.json();
+    if(j.ok){
+      msg.innerHTML=`<div class="msg ok">✓ 寫入成功！腸篩分頁 ${j.changRows} 筆、胃篩分頁 ${j.weiRows} 筆。<br><a href="${j.url}" target="_blank">開啟試算表查看</a></div>`;
+    }else{
+      msg.innerHTML=`<div class="msg err">寫入失敗：${j.error||'未知錯誤'}</div>`;
+    }
+  }catch(err){
+    msg.innerHTML=`<div class="msg err">網路錯誤：${err.message}</div>`;
+  }finally{
+    btn.disabled=false;txt.textContent='寫入 Google Sheets';
+  }
+};
+
+// ===== Download XLSX backup =====
+document.getElementById('btnDl').onclick=()=>{
+  const p=buildPayload();
+  const wb=XLSX.utils.book_new();
+  const toSheet=(arr)=>{
+    const hdr=['姓名','身分證字號','手機1','手機2','檢體狀態','報告狀態','待轉介','轉介未做腸鏡','發管日','送管日','取消追蹤','編號'];
+    const rows=[hdr,...arr.map(r=>[r.name,r.idno,r.tel1,r.tel2,'','','','','','','',r.seq])];
+    return XLSX.utils.aoa_to_sheet(rows);
+  };
+  XLSX.utils.book_append_sheet(wb,toSheet(p.chang),`行醫腸篩${p.date}`);
+  XLSX.utils.book_append_sheet(wb,toSheet(p.wei),`行醫胃篩${p.date}`);
+  XLSX.writeFile(wb,`腸胃篩_${p.date}.xlsx`);
+};
+</script>
+</body>
+</html>

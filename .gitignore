@@ -1,0 +1,10 @@
+testdata/
+*.xlsx
+*.xls
+.dev.vars
+node_modules/
+.DS_Store
+*.log
+service-account*.json
+key*.json
+.wrangler/

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sample-recovery",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8718"],
+      "port": 8718
+    }
+  ]
+}

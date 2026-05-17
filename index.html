@@ -718,7 +718,8 @@ function phoneNorm(v){
 }
 function splitCisid(c){
   c=String(c||'');
-  return {head: c.length>=9?c.slice(0,9):c, tail: c.length>=9?c.slice(9):c};
+  if(c.length>=9) return {head: c.slice(0,9), tail: c.slice(9)};
+  return {head: '', tail: c};
 }
 function rocToMMDD(roc){ // 1150516 → 05/16
   if(!roc || String(roc).length!==7) return '';
@@ -1148,14 +1149,23 @@ function chipHTML(p, kind){ // kind = 'fobt' or 'gastric'
   const sendDate = obj.sendDate||'';
   const recovDate = getRecov(p.cisid, kind);
   const isSent = !!sendDate;
-  const cls = isSent ? 'is-sent' : (isDone ? 'is-recov' : '');
+  // 鎖定條件：回收日模式 + 已送管 → 不能再改回收狀態（已寄出）
+  const isLocked = State.batchMode==='recov' && isSent;
+  // 送管日模式 + 無回收日 → 不能點
+  const sendBlocked = State.batchMode==='send' && !isDone && !isSent;
+  const blocked = isLocked || sendBlocked;
+  let cls = isSent ? 'is-sent' : (isDone ? 'is-recov' : '');
+  if (blocked) cls += ' is-blocked';
   const dotMark = isSent ? '→' : (isDone ? '✓' : '');
   let tip = `${label}篩 · ${obj.cisid}`;
   if (isDone) tip += `\n已回收${recovDate?' ('+recovDate+')':''}`;
   if (isSent) tip += `\n送管 ${sendDate}`;
-  if (State.batchMode==='recov') tip += '\n[回收日模式] 點按 = 切換已回收 + 記今日為回收日';
-  else tip += isDone ? '\n[送管日模式] 點按 = 寫入送管日' : '\n[送管日模式] 需先有回收日';
-  return `<button class="rs-tg ${cls}" data-chip="${kind}" data-cisid="${p.cisid}" data-tip="${tip}">
+  if (isLocked) tip += '\n🔒 已送管 不能改回收';
+  else if (sendBlocked) tip += '\n🔒 [送管日模式] 需先有回收日';
+  else if (State.batchMode==='recov') tip += '\n[回收日模式] 點按 = 切換已回收';
+  else tip += '\n[送管日模式] 點按 = 寫入送管日';
+  const attr = blocked ? 'data-blocked="1"' : '';
+  return `<button class="rs-tg ${cls}" data-chip="${kind}" data-cisid="${p.cisid}" ${attr} data-tip="${tip}">
     <span class="rs-tg-dot">${dotMark}</span>${label}
   </button>`;
 }
@@ -1163,8 +1173,9 @@ function sendCellHTML(p, kind){
   const obj = p[kind];
   if(!obj) return `<span class="rs-sendcell is-na" data-tip="不適用">—</span>`;
   if(obj.sendDate) return `<span class="rs-sendcell is-set" data-cisid="${p.cisid}" data-kind="${kind}" data-tip="點按取消送管日">${obj.sendDate}</span>`;
-  const hasRecov = !!getRecov(p.cisid, kind);
-  if(!hasRecov) return `<span class="rs-sendcell is-locked" data-tip="需先標記已回收（${kind==='fobt'?'腸':'胃'}篩）">—</span>`;
+  // 可填條件：已標 V (本機或試算表)；單獨點按要依賴 obj.status (sheet 同步來源)
+  const canSend = obj.status==='V' || !!getRecov(p.cisid, kind);
+  if(!canSend) return `<span class="rs-sendcell is-locked" data-tip="需先標記已回收（${kind==='fobt'?'腸':'胃'}篩）">—</span>`;
   return `<span class="rs-sendcell" data-cisid="${p.cisid}" data-kind="${kind}" data-send-click data-tip="點按寫入：${dateToMMDD(State.batchDate)}">點填</span>`;
 }
 function reportSelHTML(p, kind){
@@ -1212,9 +1223,9 @@ function rowHTML(p){
   </tr>`;
 }
 function bindRowEvents(){
-  // chip click — depends on batch mode
+  // chip click — depends on batch mode; skip blocked/na
   document.querySelectorAll('[data-chip]').forEach(el=>{
-    if(el.classList.contains('is-na')) return;
+    if(el.classList.contains('is-na') || el.dataset.blocked) return;
     el.onclick=()=>chipClick(el.dataset.cisid, el.dataset.chip);
   });
   // send-cell direct click → write send date (uses current picker)
@@ -1242,6 +1253,9 @@ async function chipClick(cisid, kind){
   const obj = p[kind]; if(!obj) return;
   const sendStr = dateToMMDD(State.batchDate);
   if(State.batchMode==='recov'){
+    if(obj.sendDate){
+      toast('已送管，不能改回收狀態','warn'); return;
+    }
     if(obj.status==='V'){
       setRecov(cisid, kind, '');
       await updateField(cisid, kind, {status:''});
@@ -1250,7 +1264,7 @@ async function chipClick(cisid, kind){
       await updateField(cisid, kind, {status:'V'});
     }
   } else {
-    if(!getRecov(cisid, kind)){
+    if(!obj.status && !obj.sendDate){
       toast('需先在「回收日模式」標記已回收','warn'); return;
     }
     if(obj.sendDate){

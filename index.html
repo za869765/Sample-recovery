@@ -565,6 +565,10 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
         <input id="cases-search" placeholder="搜尋姓名 / 身分證 / 末 5 碼…">
         <span class="rs-kbd">/</span>
       </div>
+      <button class="rs-btn is-sm" id="btn-print-pick" data-tip="列印「尚未回收」名單：紙本對勾，回 UI 補點">
+        <svg width="13" height="13" viewBox="0 0 13 13"><path d="M3 1.5 h7 v3 H3 Z M2 4.5 h9 v5 a1 1 0 0 1 -1 1 H3 a1 1 0 0 1 -1 -1 Z M4 7 h5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>
+        列印待收檢
+      </button>
       <button class="rs-btn is-sm" id="btn-import-report" data-tip="上傳檢驗報告 xls 自動填回報告狀態（v0.3 待規格）">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 -3 l3 3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         匯入報告
@@ -691,6 +695,11 @@ function dateToRoc(d){ // 2026-05-16 → 1150516
   if(!d) return '';
   const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d); if(!m) return '';
   return String(parseInt(m[1],10)-1911).padStart(3,'0') + m[2] + m[3];
+}
+function dateToMMDD(d){ // 2026-05-22 → 05/22
+  if(!d) return '';
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d); if(!m) return '';
+  return m[2]+'/'+m[3];
 }
 function todayRoc(){
   const d=new Date(); const roc=d.getFullYear()-1911;
@@ -1146,7 +1155,7 @@ function sendCellHTML(p, kind){
   if(obj.sendDate) return `<span class="rs-sendcell is-set" data-cisid="${p.cisid}" data-kind="${kind}" data-tip="點按取消送管日">${obj.sendDate}</span>`;
   const hasRecov = !!getRecov(p.cisid, kind);
   if(!hasRecov) return `<span class="rs-sendcell is-locked" data-tip="需先標記已回收（${kind==='fobt'?'腸':'胃'}篩）">—</span>`;
-  return `<span class="rs-sendcell" data-cisid="${p.cisid}" data-kind="${kind}" data-send-click data-tip="點按寫入：${dateToRoc(State.batchDate)}">點填</span>`;
+  return `<span class="rs-sendcell" data-cisid="${p.cisid}" data-kind="${kind}" data-send-click data-tip="點按寫入：${dateToMMDD(State.batchDate)}">點填</span>`;
 }
 function reportSelHTML(p, kind){
   const obj = p[kind];
@@ -1200,7 +1209,7 @@ function bindRowEvents(){
   });
   // send-cell direct click → write send date (uses current picker)
   document.querySelectorAll('[data-send-click]').forEach(el=>{
-    el.onclick=()=>setSendDate(el.dataset.cisid, el.dataset.kind, dateToRoc(State.batchDate));
+    el.onclick=()=>setSendDate(el.dataset.cisid, el.dataset.kind, dateToMMDD(State.batchDate));
   });
   document.querySelectorAll('.rs-sendcell.is-set').forEach(el=>{
     el.onclick=()=>setSendDate(el.dataset.cisid, el.dataset.kind, '');
@@ -1221,9 +1230,8 @@ function getMerged(cisid){ return State.session.merged.find(p=>p.cisid===cisid);
 async function chipClick(cisid, kind){
   const p = getMerged(cisid); if(!p) return;
   const obj = p[kind]; if(!obj) return;
-  const recovDateRoc = dateToRoc(State.batchDate);
+  const sendStr = dateToMMDD(State.batchDate);
   if(State.batchMode==='recov'){
-    // toggle status V; record/clear recov date in localStorage
     if(obj.status==='V'){
       setRecov(cisid, kind, '');
       await updateField(cisid, kind, {status:''});
@@ -1232,14 +1240,13 @@ async function chipClick(cisid, kind){
       await updateField(cisid, kind, {status:'V'});
     }
   } else {
-    // send mode
     if(!getRecov(cisid, kind)){
       toast('需先在「回收日模式」標記已回收','warn'); return;
     }
     if(obj.sendDate){
       await updateField(cisid, kind, {sendDate:''});
     } else {
-      await updateField(cisid, kind, {sendDate:recovDateRoc});
+      await updateField(cisid, kind, {sendDate:sendStr});
     }
   }
 }
@@ -1332,6 +1339,87 @@ function autoFocusByTail(q){
     document.getElementById('cases-search-wrap').classList.remove('is-active');
   }
 }
+document.getElementById('btn-print-pick').onclick = ()=>printPickList();
+
+function printPickList(){
+  if(!State.session || !State.session.merged?.length){ toast('無資料可列印','warn'); return; }
+  const pending = State.session.merged.map(p=>{
+    const needs = [];
+    if (p.fobt && p.fobt.status!=='V' && !p.fobt.cancel) needs.push('腸');
+    if (p.gastric && p.gastric.status!=='V' && !p.gastric.cancel) needs.push('胃');
+    return needs.length ? {cisid:p.cisid, name:p.name||'(無名)', idno:p.idno||'', needs:needs.join('+')} : null;
+  }).filter(Boolean).sort((a,b)=>a.cisid.localeCompare(b.cisid));
+  if(!pending.length){ toast('全部已回收，無待收檢項目','ok'); return; }
+
+  const date = State.session.date;
+  const rocStr = `${parseInt(date.slice(0,3),10)} 年 ${parseInt(date.slice(3,5),10)} 月 ${parseInt(date.slice(5,7),10)} 日`;
+  const wd = rocToDate(date);
+  const printedAt = new Date().toLocaleString('zh-TW',{hour12:false});
+  const countF = pending.filter(p=>p.needs.includes('腸')).length;
+  const countG = pending.filter(p=>p.needs.includes('胃')).length;
+
+  const rows = pending.map(p=>`<tr>
+    <td class="num">${p.cisid.slice(-5)}</td>
+    <td class="kind k-${p.needs==='腸'?'f':p.needs==='胃'?'g':'b'}">${p.needs}</td>
+    <td class="name">${escapeHTML(p.name)}</td>
+    <td class="chk">□</td>
+  </tr>`).join('');
+
+  const html = `<!doctype html><html lang="zh-Hant"><head>
+<meta charset="utf-8"><title>待收檢清單 ${date}</title>
+<style>
+@page{size:A4 portrait;margin:0.8cm}
+*{box-sizing:border-box}
+body{font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;font-size:11pt;color:#000;margin:0;padding:0;line-height:1.3}
+h1{font-size:14pt;margin:0 0 4px;display:flex;align-items:baseline;gap:10px}
+h1 .roc{font-family:Consolas,monospace;font-size:13pt}
+h1 .wd{font-size:10pt;color:#555;font-weight:400}
+.meta{font-size:9pt;color:#444;margin-bottom:10px;display:flex;gap:18px;flex-wrap:wrap;border-bottom:1px solid #999;padding-bottom:6px}
+.meta b{color:#000}
+.cols{column-count:2;column-gap:14px;column-rule:1px dashed #ccc}
+table{width:100%;border-collapse:collapse;font-size:10.5pt}
+thead{display:table-header-group}
+tr{break-inside:avoid;page-break-inside:avoid}
+th,td{border:1px solid #888;padding:3px 6px;text-align:left;vertical-align:middle}
+th{background:#eee;font-weight:600;font-size:9pt;text-align:center}
+td.num{font-family:Consolas,monospace;font-weight:700;font-size:11.5pt;width:60px;letter-spacing:0.02em}
+td.kind{width:54px;text-align:center;font-size:10pt;font-weight:700}
+td.kind.k-f{background:#fff8e6}
+td.kind.k-g{background:#eef5ff}
+td.kind.k-b{background:#fff;color:#a14}
+td.name{font-size:10.5pt}
+td.chk{width:28px;text-align:center;font-size:18pt;font-weight:400;color:#999}
+.ft{font-size:8pt;color:#666;margin-top:10px;display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid #ccc}
+.bar{padding:6px;background:#f4f2ec;border:1px solid #999;text-align:center;margin-bottom:10px;font-size:10pt;display:none}
+@media screen{.bar{display:block}body{padding:20px;max-width:900px;margin:0 auto;background:#f4f2ec}.cols{background:#fff;padding:14px;border:1px solid #ccc}}
+@media print{.bar{display:none}}
+</style></head><body>
+<div class="bar">
+  <button onclick="window.print()" style="padding:6px 14px;font-size:13px">🖨 列印</button>
+  <span style="margin-left:12px;color:#666">列印後請對勾紙本，回 UI 點選相應編號</span>
+</div>
+<h1>行動醫院 待收檢清單 <span class="roc">${date}</span><span class="wd">· ${wd}</span></h1>
+<div class="meta">
+  <span>共 <b>${pending.length}</b> 人未收齊</span>
+  <span>腸 <b>${countF}</b></span>
+  <span>胃 <b>${countG}</b></span>
+  <span style="margin-left:auto">列印於 ${printedAt}</span>
+</div>
+<div class="cols">
+  <table>
+    <thead><tr><th>編號末5</th><th>種類</th><th>姓名</th><th>√</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</div>
+<div class="ft"><span>● 紙本對勾後，回系統「回收日模式」點按相應編號</span><span>檢體回收系統 · v0.3.x</span></div>
+</body></html>`;
+
+  const w = window.open('', '_blank', 'width=900,height=1100');
+  if(!w){ toast('瀏覽器封鎖開新視窗，請允許','bad'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+function escapeHTML(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
 document.getElementById('btn-import-report').onclick = async ()=>{
   await dialog(
     `<h3>匯入檢驗報告</h3>

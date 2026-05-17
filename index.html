@@ -650,7 +650,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.13';
+const APP_VERSION = 'v0.3.14';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1187,35 +1187,42 @@ function renderCases(){
   const gRpt = rpt(State.session.cases.gastric);
   const fAll = (State.session.cases.fobt||[]).length;
   const gAll = (State.session.cases.gastric||[]).length;
-  // 健保預防保健 vs 市府補助分類（從 localStorage 讀補助 cisid 集合）
+  // 健保預防保健 vs 市府補助分類
   const sub = State.subsidy || new Set();
-  const fSubAll = (State.session.cases.fobt||[]).filter(r=>sub.has(r.cisid)).length;
-  const fHealthAll = fAll - fSubAll;
+  const fobtArr = State.session.cases.fobt||[];
+  const gastricArr = State.session.cases.gastric||[];
+  const fH = fobtArr.filter(r=>!sub.has(r.cisid));
+  const fS = fobtArr.filter(r=>sub.has(r.cisid));
+  const cellOf = (arr)=>({
+    all: arr.length,
+    done: arr.filter(r=>r.status==='V').length,
+    pos: arr.filter(r=>r.report==='異常').length,
+    norm: arr.filter(r=>r.report==='正常').length,
+    pend: arr.filter(r=>r.status==='V' && !r.report).length,
+  });
+  const fHc = cellOf(fH), fSc = cellOf(fS), gC = cellOf(gastricArr);
   const donePct = allS ? Math.round(sp.done/allS*100) : 0;
-  const fPct = fAll ? Math.round(fRpt.異常/fAll*100) : 0;
-  const gPct = gAll ? Math.round(gRpt.異常/gAll*100) : 0;
-  const classifyHint = sub.size>0 ? `健保 ${fHealthAll} · 補助 ${fSubAll}` : `（尚無分類紀錄）`;
+  const sCell = (title, c, color, hint)=>{
+    const dp = c.all ? Math.round(c.done/c.all*100) : 0;
+    return `<div class="rs-stat">
+      <div class="rs-stat-label is-done" style="color:${color}">${title}</div>
+      <div class="rs-stat-value">${c.done}<span class="rs-stat-total">/ ${c.all} 支</span><span class="rs-stat-pct">${dp}%</span></div>
+      <div class="rs-stat-bar"><i style="width:${dp}%;background:${color}"></i></div>
+      <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">
+        陽性 <b style="color:var(--bad);font-weight:700">${c.pos}</b> · 正常 ${c.norm} · 待回報 ${c.pend}${hint?' · '+hint:''}
+      </div>
+    </div>`;
+  };
   document.getElementById('stats-strip').innerHTML = `
     <div class="rs-stat">
-      <div class="rs-stat-label is-done">回收進度</div>
+      <div class="rs-stat-label is-done">回收總進度</div>
       <div class="rs-stat-value">${sp.done}<span class="rs-stat-total">/ ${allS} 支</span><span class="rs-stat-pct">${donePct}%</span></div>
       <div class="rs-stat-bar"><i style="width:${donePct}%"></i></div>
       <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">已收 ${counts.done} 人 · 未收 ${counts.pending} 人 / ${counts.all} 人</div>
     </div>
-    <div class="rs-stat">
-      <div class="rs-stat-label is-warn">腸篩報告陽性</div>
-      <div class="rs-stat-value">${fRpt.異常}<span class="rs-stat-total">/ ${fAll} 支</span><span class="rs-stat-pct">${fPct}%</span></div>
-      <div class="rs-stat-bar"><i style="width:${fPct}%;background:var(--warn)"></i></div>
-      <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">正常 ${fRpt.正常} · 待回報 ${fRpt.空}</div>
-      <div style="font-size:11px;color:var(--ink-faint);margin-top:1px" class="rs-mono" data-tip="健保=fobt45-75歲名冊；補助=非45-75歲FOBT 勾選的人">${classifyHint}</div>
-    </div>
-    <div class="rs-stat">
-      <div class="rs-stat-label is-warn">胃篩報告陽性</div>
-      <div class="rs-stat-value">${gRpt.異常}<span class="rs-stat-total">/ ${gAll} 支</span><span class="rs-stat-pct">${gPct}%</span></div>
-      <div class="rs-stat-bar"><i style="width:${gPct}%;background:var(--warn)"></i></div>
-      <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">正常 ${gRpt.正常} · 待回報 ${gRpt.空}</div>
-      <div style="font-size:11px;color:var(--ink-faint);margin-top:1px" class="rs-mono">（皆健保 45-75）</div>
-    </div>
+    ${sCell('腸 · 預防保健（健保）', fHc, 'oklch(0.55 0.15 60)', '')}
+    ${sCell('腸 · 市府補助', fSc, 'oklch(0.55 0.15 0)', sub.size===0?'<span style="color:var(--ink-faint)">尚無分類紀錄</span>':'')}
+    ${sCell('胃 · 預防保健（健保）', gC, 'oklch(0.55 0.13 200)', '')}
   `;
 
   // 重補耗材記錄（不寫試算表，本機 localStorage per 場次）

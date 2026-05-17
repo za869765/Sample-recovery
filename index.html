@@ -633,7 +633,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.4';
+const APP_VERSION = 'v0.3.5';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1028,8 +1028,8 @@ async function openSession(date){
   document.getElementById('topbar-session-label').textContent = date;
   document.getElementById('topbar-session-roc').textContent = '· ' + rocToDate(date);
   document.getElementById('topbar-session-block').classList.remove('hidden');
-  // init picker date + mode
-  State.batchDate = localStorage.getItem(PICKER_KEY) || todayDateStr();
+  // init picker date：預設場次日（行醫日），開新場次時不沿用其他場次的 picker 值
+  State.batchDate = rocToDate(date) || todayDateStr();
   document.getElementById('batch-date').value = State.batchDate;
   State.batchMode = localStorage.getItem(MODE_KEY) || 'recov';
   applyModeUI();
@@ -1108,8 +1108,12 @@ function currentMerged(){
 }
 function renderCases(){
   const all = State.session.merged;
+  // 人 = 一個 merged row；支 = 試管數（腸/胃各 1 支，可能 0~2 支/人）
+  const sumS = pred => all.reduce((n,p)=>n+(p.fobt&&pred(p.fobt)?1:0)+(p.gastric&&pred(p.gastric)?1:0),0);
+  const allP = all.length;
+  const allS = sumS(()=>true);
   const counts = {
-    all: all.length,
+    all: allP,
     pending: all.filter(p=>{
       const fobtPending = p.fobt && p.fobt.status!=='V' && !p.fobt.cancel;
       const gPending = p.gastric && p.gastric.status!=='V' && !p.gastric.cancel;
@@ -1124,18 +1128,33 @@ function renderCases(){
     missed: all.filter(p=>p.fobt?.missed||p.gastric?.missed).length,
     cancel: all.filter(p=>p.fobt?.cancel||p.gastric?.cancel).length,
   };
+  const sp = {
+    pending: sumS(o=>o.status!=='V' && !o.cancel),
+    done: sumS(o=>o.status==='V'),
+    referral: sumS(o=>o.referral),
+    missed: sumS(o=>o.missed),
+    cancel: sumS(o=>o.cancel),
+  };
   document.getElementById('filter-chips').innerHTML = [
     ['all','全部'],['pending','未回收'],['done','已回收'],['referral','待轉介'],['missed','轉介未做腸鏡'],['cancel','取消追蹤'],
   ].map(([k,l])=>`<button class="rs-chip ${State.caseFilter===k?'is-on':''}" data-filter="${k}">${l} <span class="rs-chip-count">${counts[k]}</span></button>`).join('');
   document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{State.caseFilter=b.dataset.filter;renderCases()});
 
-  document.getElementById('stats-strip').innerHTML = `
-    <div class="rs-stat"><div class="rs-stat-label is-pending">未回收</div><div class="rs-stat-value">${counts.pending}<span class="rs-stat-total">/ ${counts.all}</span><span class="rs-stat-pct">${counts.all?Math.round(counts.pending/counts.all*100):0}%</span></div><div class="rs-stat-bar"><i style="width:${counts.all?Math.round(counts.pending/counts.all*100):0}%;background:var(--ink-faint)"></i></div></div>
-    <div class="rs-stat"><div class="rs-stat-label is-done">已回收</div><div class="rs-stat-value">${counts.done}<span class="rs-stat-total">/ ${counts.all}</span><span class="rs-stat-pct">${counts.all?Math.round(counts.done/counts.all*100):0}%</span></div><div class="rs-stat-bar"><i style="width:${counts.all?Math.round(counts.done/counts.all*100):0}%"></i></div></div>
-    <div class="rs-stat"><div class="rs-stat-label is-warn">待轉介</div><div class="rs-stat-value">${counts.referral}</div><div class="rs-stat-bar"><i style="width:${counts.all?counts.referral/counts.all*100:0}%;background:var(--warn)"></i></div></div>
-    <div class="rs-stat"><div class="rs-stat-label is-bad">轉介未做腸鏡</div><div class="rs-stat-value">${counts.missed}</div><div class="rs-stat-bar"><i style="width:${counts.all?counts.missed/counts.all*100:0}%;background:var(--bad)"></i></div></div>
-    <div class="rs-stat"><div class="rs-stat-label">取消追蹤</div><div class="rs-stat-value">${counts.cancel}</div><div class="rs-stat-bar"><i style="width:${counts.all?counts.cancel/counts.all*100:0}%;background:var(--ink-faint)"></i></div></div>
-  `;
+  const dual = (sN,pN,sAll,pAll,kind,barCol)=>{
+    const pct = sAll ? Math.round(sN/sAll*100) : 0;
+    return `<div class="rs-stat">
+      <div class="rs-stat-label is-${kind}">${{pending:'未回收',done:'已回收',warn:'待轉介',bad:'轉介未做腸鏡',cancel:'取消追蹤'}[kind] || ''}</div>
+      <div class="rs-stat-value">${sN}<span class="rs-stat-total">/ ${sAll} 支</span><span class="rs-stat-pct">${pct}%</span></div>
+      <div class="rs-stat-bar"><i style="width:${pct}%;${barCol?'background:'+barCol:''}"></i></div>
+      <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">${pN} / ${pAll} 人</div>
+    </div>`;
+  };
+  document.getElementById('stats-strip').innerHTML =
+    dual(sp.pending, counts.pending, allS, allP, 'pending', 'var(--ink-faint)') +
+    dual(sp.done,    counts.done,    allS, allP, 'done') +
+    dual(sp.referral,counts.referral,allS, allP, 'warn', 'var(--warn)') +
+    dual(sp.missed,  counts.missed,  allS, allP, 'bad',  'var(--bad)') +
+    dual(sp.cancel,  counts.cancel,  allS, allP, 'cancel','var(--ink-faint)');
 
   const list = currentMerged();
   document.getElementById('cases-tbody').innerHTML = list.map(p=>rowHTML(p)).join('');

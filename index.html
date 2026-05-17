@@ -101,7 +101,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
 .rs-tbl tbody tr.is-focus{background:color-mix(in oklab,var(--accent-soft) 65%,white);box-shadow:inset 3px 0 0 var(--accent)}
 
 /* ── hero cisid cell ── */
-.rs-cisid{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 8px 0 6px;border-radius:5px;background:var(--surface-alt);border:1px solid var(--line);font-family:var(--mono);font-size:12.5px;letter-spacing:-.01em;color:var(--ink);cursor:pointer;transition:background .12s,border-color .12s,transform .08s;user-select:none}
+.rs-cisid{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:5px;background:var(--surface-alt);border:1px solid var(--line-strong);font-family:var(--mono);font-size:12.5px;font-weight:600;letter-spacing:-.01em;color:var(--ink);cursor:pointer;transition:background .12s,border-color .12s,transform .08s;user-select:none}
+button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weight:700}
 .rs-cisid:hover{background:#fff;border-color:var(--ink-faint)}
 .rs-cisid:active{transform:translateY(1px)}
 .rs-cisid-dot{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--line-strong);background:var(--surface);display:inline-grid;place-items:center;color:transparent;font-size:10px;font-weight:700}
@@ -1202,11 +1203,12 @@ function rowHTML(p){
   const cisidTip = `行動醫院編號 ${p.cisid}\n名冊：${kinds}\n發管 ${normMMDD(p.dispatch)}`;
   // We use fobt as primary cancel toggle (most operations are fobt-side)
   const cancelKind = p.fobt ? 'fobt' : 'gastric';
+  const fullTip = cisidTip + '\n\n點編號 = 同時切換腸+胃（依資料源、依模式）';
   return `<tr class="${isAllDone?'is-done':''} ${isAllCancel?'is-cancelled':''} ${focusCls}" data-cisid="${p.cisid}">
     <td>
-      <span class="rs-cisid" data-tip="${cisidTip}">
-        <span class="rs-cisid-head">${head}</span><span class="rs-cisid-tail">${tail}</span>
-      </span>
+      <button class="rs-cisid" data-toggle-all="${p.cisid}" data-tip="${fullTip}" style="cursor:pointer;font-size:13.5px">
+        <span class="rs-cisid-tail">${tail}</span>
+      </button>
       <span class="rs-tg-group">${chipHTML(p,'fobt')}${chipHTML(p,'gastric')}</span>
     </td>
     <td style="font-weight:500" data-tip="${p.name||''}">${p.name||''}</td>
@@ -1228,6 +1230,10 @@ function bindRowEvents(){
     if(el.classList.contains('is-na') || el.dataset.blocked) return;
     el.onclick=()=>chipClick(el.dataset.cisid, el.dataset.chip);
   });
+  // cisid click → toggle both 腸+胃 (依資料源 + 跳過 blocked)
+  document.querySelectorAll('[data-toggle-all]').forEach(el=>{
+    el.onclick=()=>toggleAll(el.dataset.toggleAll);
+  });
   // send-cell direct click → write send date (uses current picker)
   document.querySelectorAll('[data-send-click]').forEach(el=>{
     el.onclick=()=>setSendDate(el.dataset.cisid, el.dataset.kind, dateToMMDD(State.batchDate));
@@ -1247,6 +1253,21 @@ function bindRowEvents(){
   });
 }
 function getMerged(cisid){ return State.session.merged.find(p=>p.cisid===cisid); }
+
+async function toggleAll(cisid){
+  const p = getMerged(cisid); if(!p) return;
+  let acted = 0;
+  for (const kind of ['fobt','gastric']){
+    const obj = p[kind]; if(!obj) continue;
+    // skip blocked: recov mode + already sent → cannot change recov
+    if (State.batchMode==='recov' && obj.sendDate) continue;
+    // skip: send mode + no recov yet
+    if (State.batchMode==='send' && !obj.status && !obj.sendDate) continue;
+    await chipClick(cisid, kind);
+    acted++;
+  }
+  if(!acted) toast('沒有可操作的項目','warn');
+}
 
 async function chipClick(cisid, kind){
   const p = getMerged(cisid); if(!p) return;
@@ -1386,36 +1407,35 @@ function printPickList(){
     <td class="num">${p.cisid.slice(-4)}</td>
     <td class="kind k-${p.needs==='腸'?'f':p.needs==='胃'?'g':'b'}">${p.needs}</td>
     <td class="name">${escapeHTML(p.name)}</td>
-    <td class="chk">□</td>
+    <td class="chk"><span class="box"></span></td>
   </tr>`).join('');
 
   const html = `<!doctype html><html lang="zh-Hant"><head>
 <meta charset="utf-8"><title>待收檢清單 ${date}</title>
 <style>
-@page{size:A4 portrait;margin:0.8cm}
+@page{size:A4 portrait;margin:0.6cm}
 *{box-sizing:border-box}
-body{font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;font-size:11pt;color:#000;margin:0;padding:0;line-height:1.3}
-h1{font-size:14pt;margin:0 0 4px;display:flex;align-items:baseline;gap:10px}
-h1 .roc{font-family:Consolas,monospace;font-size:13pt}
-h1 .wd{font-size:10pt;color:#555;font-weight:400}
-.meta{font-size:9pt;color:#444;margin-bottom:10px;display:flex;gap:18px;flex-wrap:wrap;border-bottom:1px solid #999;padding-bottom:6px}
+body{font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;font-size:10pt;color:#000;margin:0;padding:0;line-height:1.15}
+h1{font-size:13pt;margin:0 0 3px;display:flex;align-items:baseline;gap:10px}
+h1 .roc{font-family:Consolas,monospace;font-size:12pt}
+h1 .wd{font-size:9pt;color:#555;font-weight:400}
+.meta{font-size:8.5pt;color:#444;margin-bottom:6px;display:flex;gap:14px;flex-wrap:wrap;border-bottom:1px solid #999;padding-bottom:4px}
 .meta b{color:#000}
-.cols{column-count:2;column-gap:14px;column-rule:1px dashed #ccc}
-table{width:100%;border-collapse:collapse;font-size:10.5pt}
-thead{display:table-header-group}
+.cols{column-count:2;column-gap:10px;column-rule:1px dashed #ccc}
+table{width:100%;border-collapse:collapse;font-size:10pt}
 tr{break-inside:avoid;page-break-inside:avoid}
-th,td{border:1px solid #888;padding:3px 6px;text-align:left;vertical-align:middle}
-th{background:#eee;font-weight:600;font-size:9pt;text-align:center}
-td.num{font-family:Consolas,monospace;font-weight:700;font-size:11.5pt;width:60px;letter-spacing:0.02em}
-td.kind{width:54px;text-align:center;font-size:10pt;font-weight:700}
+td{border:1px solid #888;padding:2px 5px;text-align:left;vertical-align:middle}
+td.num{font-family:Consolas,monospace;font-weight:700;font-size:11pt;width:48px;letter-spacing:0.02em;text-align:center}
+td.kind{width:46px;text-align:center;font-size:9.5pt;font-weight:700}
 td.kind.k-f{background:#fff8e6}
 td.kind.k-g{background:#eef5ff}
 td.kind.k-b{background:#fff;color:#a14}
-td.name{font-size:10.5pt}
-td.chk{width:28px;text-align:center;font-size:18pt;font-weight:400;color:#999}
-.ft{font-size:8pt;color:#666;margin-top:10px;display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid #ccc}
-.bar{padding:6px;background:#f4f2ec;border:1px solid #999;text-align:center;margin-bottom:10px;font-size:10pt;display:none}
-@media screen{.bar{display:block}body{padding:20px;max-width:900px;margin:0 auto;background:#f4f2ec}.cols{background:#fff;padding:14px;border:1px solid #ccc}}
+td.name{font-size:10pt}
+td.chk{width:36px;text-align:center;padding:1px 4px}
+td.chk .box{display:inline-block;width:20px;height:20px;border:1.6px solid #555;border-radius:2px;background:#fff;vertical-align:middle}
+.ft{font-size:7.5pt;color:#666;margin-top:6px;display:flex;justify-content:space-between;padding-top:4px;border-top:1px solid #ccc}
+.bar{padding:6px;background:#f4f2ec;border:1px solid #999;text-align:center;margin-bottom:8px;font-size:10pt;display:none}
+@media screen{.bar{display:block}body{padding:20px;max-width:920px;margin:0 auto;background:#f4f2ec}.cols{background:#fff;padding:12px;border:1px solid #ccc}}
 @media print{.bar{display:none}}
 </style></head><body>
 <div class="bar">
@@ -1430,10 +1450,7 @@ td.chk{width:28px;text-align:center;font-size:18pt;font-weight:400;color:#999}
   <span style="margin-left:auto">列印於 ${printedAt}</span>
 </div>
 <div class="cols">
-  <table>
-    <thead><tr><th>編號末5</th><th>種類</th><th>姓名</th><th>√</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
+  <table><tbody>${rows}</tbody></table>
 </div>
 <div class="ft"><span>● 紙本對勾後，回系統「回收日模式」點按相應編號</span><span>檢體回收系統 · v0.3.x</span></div>
 </body></html>`;

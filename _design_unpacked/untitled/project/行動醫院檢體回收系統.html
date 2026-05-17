@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>行動醫院檢體回收系統 — 設計稿</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    html, body { margin: 0; height: 100%; background: #e9e7e1; font-family: "Noto Sans TC", system-ui, sans-serif; }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="screens/home.jsx"></script>
+  <script type="text/babel" src="screens/upload.jsx"></script>
+  <script type="text/babel" src="screens/cases.jsx"></script>
+  <script type="text/babel" src="screens/reference.jsx"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useEffect } = React;
+
+    function App() {
+      // wait one tick so child scripts have exported components
+      const [ready, setReady] = React.useState(false);
+      useEffect(() => { const t = setTimeout(() => setReady(true), 30); return () => clearTimeout(t); }, []);
+      if (!ready) return null;
+
+      return (
+        <DesignCanvas title="行動醫院檢體回收系統" subtitle="桌機 UI · 護理師單人使用 · 試算表後援">
+
+          <DCSection id="brief" title="設計取捨 / 視覺基準" subtitle="提案理由、色票、字體、鍵盤映射">
+            <DCArtboard id="notes" label="設計筆記" width={520} height={780}>
+              <DesignNotes />
+            </DCArtboard>
+            <DCArtboard id="style" label="設計系統" width={720} height={780}>
+              <StyleGuide />
+            </DCArtboard>
+            <DCArtboard id="keys" label="鍵盤快捷" width={460} height={780}>
+              <KeyboardMap />
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="entry" title="進入頁" subtitle="兩個入口 — 讀取既有 / 開啟新場次">
+            <DCArtboard id="home" label="進入頁 · 場次列表" width={1200} height={760}>
+              <window.HomeScreen />
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="init" title="開啟新行醫專案" subtitle="4 步流程，目前展示步驟 1 與步驟 3">
+            <DCArtboard id="upload" label="步驟 1+2 · 上傳並偵測 4 份名冊" width={1200} height={800}>
+              <window.UploadDetectScreen />
+            </DCArtboard>
+            <DCArtboard id="candidates" label="步驟 3 · 勾選免掛號做（市府補助）" width={1200} height={800}>
+              <window.CandidatePickScreen />
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection id="cases" title="個案管理頁 — 核心 UI" subtitle="批次回收：點編號即標記，連點極快。三個狀態示範。">
+            <DCArtboard id="cases-default" label="A · 初始化後（全部未回收）" width={1440} height={860}>
+              <window.CasesDefaultScreen />
+            </DCArtboard>
+            <DCArtboard id="cases-progress" label="B · 批次回收中（混合狀態）" width={1440} height={860}>
+              <window.CasesProgressScreen />
+            </DCArtboard>
+            <DCArtboard id="cases-keyboard" label="C · 鍵盤定位（末 5 碼搜尋）" width={1440} height={860}>
+              <window.CasesKeyboardScreen />
+            </DCArtboard>
+          </DCSection>
+
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

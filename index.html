@@ -597,6 +597,10 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M3 1.5 h7 v3 H3 Z M2 4.5 h9 v5 a1 1 0 0 1 -1 1 H3 a1 1 0 0 1 -1 -1 Z M4 7 h5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>
         列印待收檢
       </button>
+      <button class="rs-btn is-sm" id="btn-sms-csv" data-tip="下載催管簡訊 CSV：尚未回收名單（姓名,手機 9 碼無 0），tel2 行動優先，沒就用 tel1">
+        <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 3.5 a1 1 0 0 1 1 -1 h7 a1 1 0 0 1 1 1 v5 a1 1 0 0 1 -1 1 H5 l-2 2 v-2 H3 a1 1 0 0 1 -1 -1 Z" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>
+        催管簡訊
+      </button>
       <button class="rs-btn is-sm" id="btn-print-send" data-tip="列印「指定送管日」清單：給檢驗單位收檢人簽收用（用上方 picker 日期）">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M3 1.5 h7 v3 H3 Z M2 4.5 h9 v5 a1 1 0 0 1 -1 1 H3 a1 1 0 0 1 -1 -1 Z M4 7 l1.5 1.5 L9 5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round" stroke-linecap="round"/></svg>
         列印送管
@@ -674,7 +678,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.18';
+const APP_VERSION = 'v0.3.19';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1708,6 +1712,7 @@ function autoFocusByTail(q){
   }
 }
 document.getElementById('btn-print-pick').onclick = ()=>printPickList();
+document.getElementById('btn-sms-csv').onclick = ()=>exportSmsCsv();
 document.getElementById('btn-print-send').onclick = ()=>printSendListWithPicker();
 document.getElementById('btn-reissue').onclick = ()=>openReissueDialog();
 document.getElementById('btn-daily-chart').onclick = ()=>openDailyChart();
@@ -2004,6 +2009,35 @@ td.chk .box{display:inline-block;width:16px;height:16px;border:1.4px solid #555;
   if(!w){ toast('瀏覽器封鎖開新視窗，請允許','bad'); return; }
   w.document.open(); w.document.write(html); w.document.close();
 }
+
+/* ── 催管簡訊 CSV：尚未回收名單（姓名,手機 9 碼無 0），tel2 優先 ── */
+function exportSmsCsv(){
+  if(!State.session || !State.session.merged?.length){ toast('無資料','warn'); return; }
+  let pending = 0, missing = 0;
+  const rows = [];
+  for(const p of State.session.merged){
+    const needsF = p.fobt && p.fobt.status!=='V' && !p.fobt.cancel;
+    const needsG = p.gastric && p.gastric.status!=='V' && !p.gastric.cancel;
+    if(!needsF && !needsG) continue;
+    pending++;
+    const tel = p.tel2 || p.tel1 || '';
+    if(!tel){ missing++; continue; }
+    const phone = tel.startsWith('0') ? tel.slice(1) : tel;
+    rows.push(`${p.name||''},${phone}`);
+  }
+  if(!pending){ toast('全部已回收，無催管對象','ok'); return; }
+  if(!rows.length){ toast(`${pending} 人未收齊，但都沒有手機可發`,'warn'); return; }
+  const blob = new Blob([rows.join('\r\n')], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `催管_${State.session.date}.csv`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(missing ? `已下載 ${rows.length} 筆，${missing} 人無手機跳過` : `已下載 ${rows.length} 筆`, 'ok');
+}
+
 function escapeHTML(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 /* ── 本場每日進度圖表 ── */

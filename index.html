@@ -856,7 +856,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.22';
+const APP_VERSION = 'v0.3.23';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2205,7 +2205,8 @@ function exportSmsCsv(){
   }
   if(!pending){ toast('全部已回收，無催管對象','ok'); return; }
   if(!rows.length){ toast(`${pending} 人未收齊，但都沒有手機可發`,'warn'); return; }
-  const blob = new Blob([rows.join('\r\n')], {type:'text/csv;charset=utf-8'});
+  // 加 UTF-8 BOM 讓 Excel 能正確顯示中文(預設 Big5 解讀會亂碼);多數簡訊平台 import 會跳過 BOM
+  const blob = new Blob(['﻿' + rows.join('\r\n')], {type:'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

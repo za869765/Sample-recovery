@@ -309,6 +309,138 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
   font-size:10px;font-weight:600;letter-spacing:.02em;
   border-radius:2px;background:var(--surface-alt);border:1px solid var(--line);color:var(--ink-mute);
 }
+
+/* ─────────────────────────────────────────────────────────────
+   每日送管進度 chart (v3 整合版) — Design by Claude Design
+   進度環 + 累計 S-curve + Day Strip 三視角整合
+   所有 selectors 都 scope 在 .chart-card 下，不污染主系統樣式。
+   ───────────────────────────────────────────────────────────── */
+.chart-card{
+  --d-bg:        oklch(0.155 0.012 260);
+  --d-surface:   oklch(0.205 0.014 260);
+  --d-surface-2: oklch(0.245 0.014 260);
+  --d-hairline:  oklch(1 0 0 / 0.06);
+  --d-grid:      oklch(1 0 0 / 0.04);
+  --d-text:      oklch(0.98 0.005 260);
+  --d-text-2:    oklch(0.72 0.012 260);
+  --d-text-3:    oklch(0.50 0.012 260);
+  --d-fobt-top:    oklch(0.78 0.17 32);
+  --d-fobt-bot:    oklch(0.64 0.18 28);
+  --d-gastric-top: oklch(0.72 0.15 268);
+  --d-gastric-bot: oklch(0.55 0.17 270);
+  --d-warn:        oklch(0.80 0.17 78);
+  --d-target:      oklch(0.65 0.13 155);
+  padding:28px 32px 24px;
+  position:relative;
+  background:var(--d-bg);
+  color:var(--d-text);
+  border-radius:12px;
+  font-family:var(--sans);
+  -webkit-font-smoothing:antialiased;
+}
+.chart-card *{ box-sizing:border-box; }
+
+.chart-card .chart-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px}
+.chart-card .chart-head .title{font-size:14px;font-weight:500;color:var(--d-text-2)}
+.chart-card .chart-head .session{font-size:11px;text-align:right;line-height:1.4;font-variant-numeric:tabular-nums;color:var(--d-text-3)}
+.chart-card .chart-head .session .roc{letter-spacing:0.04em}
+
+.chart-card .kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;margin-bottom:24px;border-radius:12px;overflow:hidden;background:var(--d-surface)}
+.chart-card .kpi{padding:16px 22px;position:relative}
+.chart-card .kpi + .kpi::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:1px;background:var(--d-hairline)}
+.chart-card .kpi .label{font-size:11px;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px;color:var(--d-text-3);display:flex;align-items:center;gap:6px}
+.chart-card .kpi .value{font-size:28px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;line-height:1;display:flex;align-items:baseline;gap:4px}
+.chart-card .kpi .value .unit{font-size:12px;font-weight:400;margin-left:4px;color:var(--d-text-3)}
+.chart-card .kpi .sub{margin-top:6px;font-size:11px;font-variant-numeric:tabular-nums;color:var(--d-text-3)}
+.chart-card .kpi.warn .value{color:var(--d-warn)}
+.chart-card .kpi.warn .pulse{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--d-warn);box-shadow:0 0 0 0 oklch(0.80 0.17 78 / 0.6);animation:chart-pulse 2s infinite}
+@keyframes chart-pulse{
+  0%   { box-shadow:0 0 0 0 currentColor; opacity:0.9 }
+  70%  { box-shadow:0 0 0 8px transparent; opacity:0.3 }
+  100% { box-shadow:0 0 0 0 transparent; opacity:0.9 }
+}
+
+.chart-card .visual-row{display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:stretch;margin-bottom:24px;padding:20px 0;border-top:1px solid var(--d-hairline);border-bottom:1px solid var(--d-hairline)}
+.chart-card .ring-side{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;position:relative}
+.chart-card .ring-wrap{position:relative;width:240px;height:240px}
+.chart-card .ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;font-variant-numeric:tabular-nums}
+.chart-card .ring-center .eyebrow{font-size:10px;letter-spacing:0.10em;text-transform:uppercase;color:var(--d-text-3);margin-bottom:8px}
+.chart-card .ring-center .pct{font-size:48px;font-weight:600;letter-spacing:-0.03em;line-height:1}
+.chart-card .ring-center .pct .pct-mark{font-size:18px;font-weight:500;margin-left:1px;color:var(--d-text-2)}
+.chart-card .ring-center .sub{margin-top:8px;font-size:11px;color:var(--d-text-3);letter-spacing:0.02em}
+.chart-card .ring-center .sub strong{color:var(--d-text-2);font-weight:500;font-size:12px}
+
+.chart-card .ring-split{display:flex;gap:16px;font-size:11px;color:var(--d-text-3);font-variant-numeric:tabular-nums}
+.chart-card .ring-split .item{display:flex;align-items:center;gap:6px}
+.chart-card .ring-split .dot{width:7px;height:7px;border-radius:50%}
+.chart-card .ring-split .lbl{color:var(--d-text-2)}
+.chart-card .ring-split .num{color:var(--d-text);font-weight:500}
+
+.chart-card .curve-side{position:relative;min-width:0}
+.chart-card .chart-svg{display:block;width:100%;height:auto;overflow:visible}
+
+.chart-card .tooltip{position:absolute;pointer-events:none;transform:translate(-50%,-100%);padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5;opacity:0;transition:opacity 120ms ease,transform 120ms ease;font-variant-numeric:tabular-nums;min-width:150px;z-index:20;white-space:nowrap;background:oklch(0.10 0.012 260 / 0.96);color:var(--d-text);box-shadow:0 8px 24px oklch(0 0 0 / 0.4),0 0 0 1px oklch(1 0 0 / 0.06);backdrop-filter:blur(8px)}
+.chart-card .tooltip.visible{opacity:1;transform:translate(-50%,calc(-100% - 10px))}
+.chart-card .tooltip .tt-date{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.6;margin-bottom:6px}
+.chart-card .tooltip .tt-row{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.chart-card .tooltip .tt-row .lbl{display:flex;align-items:center;gap:6px;opacity:0.85}
+.chart-card .tooltip .tt-row .dot{width:8px;height:8px;border-radius:2px}
+.chart-card .tooltip .tt-row .num{font-weight:600}
+.chart-card .tooltip .tt-sep{height:1px;background:oklch(1 0 0 / 0.1);margin:6px 0}
+.chart-card .tooltip .tt-total{display:flex;justify-content:space-between;font-weight:600;font-size:12px}
+.chart-card .tooltip .tt-total .num{font-size:13px}
+
+.chart-card .day-section{margin-bottom:20px}
+.chart-card .day-section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.chart-card .day-section-head .label{font-size:11px;letter-spacing:0.10em;text-transform:uppercase;color:var(--d-text-3)}
+.chart-card .day-section-head .toggle{font-size:11px;color:var(--d-text-3);background:transparent;border:0;cursor:pointer;padding:4px 8px;border-radius:6px;font-family:inherit;display:flex;align-items:center;gap:4px}
+.chart-card .day-section-head .toggle:hover{background:oklch(1 0 0 / 0.04);color:var(--d-text-2)}
+.chart-card .day-section-head .toggle svg{width:10px;height:10px;transition:transform 180ms}
+.chart-card .day-section-head .toggle.expanded svg{transform:rotate(180deg)}
+
+.chart-card .day-strip-head{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--d-text-3);padding:0 0 6px;display:grid;grid-template-columns:64px 1fr 56px 56px 64px;gap:8px;border-bottom:1px solid var(--d-hairline);margin-bottom:2px}
+.chart-card .day-strip-head .num{text-align:right}
+.chart-card .day-strip{display:flex;flex-direction:column;max-height:0;overflow:hidden;transition:max-height 280ms ease}
+.chart-card .day-strip.expanded{max-height:560px;overflow-y:auto}
+.chart-card .day-row{display:grid;grid-template-columns:64px 1fr 56px 56px 64px;gap:8px;align-items:center;padding:7px 4px;font-size:12.5px;font-variant-numeric:tabular-nums;transition:background 120ms;border-radius:6px}
+.chart-card .day-row:hover{background:oklch(1 0 0 / 0.03)}
+.chart-card .day-row .date{color:var(--d-text-2);font-size:12px}
+.chart-card .day-row .bar-cell{height:14px;display:flex;align-items:center}
+.chart-card .day-row .bar-track{width:100%;height:6px;background:oklch(1 0 0 / 0.04);border-radius:3px;overflow:hidden;display:flex}
+.chart-card .day-row .bar-fobt{height:100%;background:linear-gradient(90deg,var(--d-fobt-bot),var(--d-fobt-top))}
+.chart-card .day-row .bar-gas{height:100%;background:linear-gradient(90deg,var(--d-gastric-bot),var(--d-gastric-top))}
+.chart-card .day-row .num{text-align:right;color:var(--d-text)}
+.chart-card .day-row .num.dim{color:var(--d-text-3)}
+.chart-card .day-row .total{color:var(--d-text);font-weight:600}
+.chart-card .day-row.zero .date,
+.chart-card .day-row.zero .num,
+.chart-card .day-row.zero .total{color:var(--d-text-3)}
+.chart-card .day-row.peak .total{color:var(--d-fobt-top)}
+
+.chart-card .day-summary{display:flex;gap:24px;align-items:center;padding:8px 4px 2px;font-size:12px;color:var(--d-text-3);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.chart-card .day-summary strong{color:var(--d-text);font-weight:500}
+.chart-card .day-summary .pip{display:inline-flex;align-items:center;gap:6px}
+.chart-card .day-summary .pip .dot{width:6px;height:6px;border-radius:50%;background:var(--d-text-3)}
+.chart-card .day-summary .pip.peak .dot{background:var(--d-fobt-top)}
+
+.chart-card .chart-foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+.chart-card .legend{display:flex;gap:20px;align-items:center;font-size:12px;font-variant-numeric:tabular-nums}
+.chart-card .legend .item{display:flex;align-items:center;gap:8px}
+.chart-card .legend .swatch{width:10px;height:10px;border-radius:2px}
+.chart-card .legend .name{font-weight:500;color:var(--d-text)}
+.chart-card .legend .count{margin-left:4px;color:var(--d-text-3)}
+.chart-card .legend .item.target .swatch{background:transparent;border-top:1.5px dashed var(--d-target);height:0;border-radius:0;width:14px}
+.chart-card .chart-actions{display:flex;gap:8px}
+.chart-card .chart-btn{border:0;padding:7px 14px;border-radius:7px;font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:var(--d-surface-2);color:var(--d-text);transition:background 120ms}
+.chart-card .chart-btn:hover{background:oklch(0.30 0.014 260)}
+.chart-card .chart-btn svg{width:12px;height:12px}
+.chart-card .axis-label,.chart-card .x-tick{font-family:var(--sans);font-variant-numeric:tabular-nums}
+
+@media (max-width:720px){
+  .chart-card .visual-row{grid-template-columns:1fr}
+  .chart-card .ring-wrap{width:200px;height:200px}
+  .chart-card .ring-center .pct{font-size:40px}
+}
 </style>
 </head>
 <body>
@@ -678,7 +810,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.19';
+const APP_VERSION = 'v0.3.20';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2041,120 +2173,500 @@ function exportSmsCsv(){
 function escapeHTML(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 /* ── 本場每日進度圖表 ── */
+/* ── 每日送管進度 v3：進度環 + 累計 S-curve + Day Strip ── */
+/* Design by Claude Design (chart_mockup_v3.html) */
+const CHART_COLORS = {
+  bg:'oklch(0.155 0.012 260)', surface:'oklch(0.205 0.014 260)', surface2:'oklch(0.245 0.014 260)',
+  hairline:'oklch(1 0 0 / 0.06)', grid:'oklch(1 0 0 / 0.04)',
+  text:'oklch(0.98 0.005 260)', text2:'oklch(0.72 0.012 260)', text3:'oklch(0.50 0.012 260)',
+  fobtTop:'oklch(0.78 0.17 32)', fobtBot:'oklch(0.64 0.18 28)',
+  gasTop:'oklch(0.72 0.15 268)', gasBot:'oklch(0.55 0.17 270)',
+  warn:'oklch(0.80 0.17 78)', target:'oklch(0.65 0.13 155)',
+};
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(parent, tag, attrs, text){
+  const n = document.createElementNS(SVG_NS, tag);
+  if(attrs) for(const k in attrs) n.setAttribute(k, attrs[k]);
+  if(text != null) n.textContent = text;
+  parent.appendChild(n);
+  return n;
+}
+function niceCeil(v){
+  if(v <= 0) return 1;
+  const e = Math.floor(Math.log10(v));
+  const base = Math.pow(10, e);
+  const m = v / base;
+  let nm;
+  if(m <= 1) nm = 1;
+  else if(m <= 2) nm = 2;
+  else if(m <= 2.5) nm = 2.5;
+  else if(m <= 5) nm = 5;
+  else nm = 10;
+  return nm * base;
+}
+function niceScale(max, targetTicks=4){
+  const rawStep = max / targetTicks;
+  const step = niceCeil(rawStep);
+  const top = Math.ceil(max / step) * step;
+  const ticks = [];
+  for(let v=0; v<=top+1e-9; v+=step) ticks.push(v);
+  return { top, step, ticks };
+}
+function positionTip(tt, host, svg, vx, vy){
+  const svgRect = svg.getBoundingClientRect();
+  const hostRect = host.getBoundingClientRect();
+  const vb = svg.viewBox.baseVal;
+  const scaleX = svgRect.width / vb.width;
+  const scaleY = svgRect.height / vb.height;
+  const px = (vx * scaleX) + (svgRect.left - hostRect.left);
+  const py = (vy * scaleY) + (svgRect.top - hostRect.top);
+  tt.style.left = px + 'px';
+  tt.style.top = py + 'px';
+}
+
 function openDailyChart(){
   if(!State.session?.merged?.length){ toast('無資料','warn'); return; }
   // bucket by sendDate (送管日 = 試算表唯一可信日期維度)
-  const buckets = new Map(); // mmdd → {fobt:n, gastric:n}
-  let noSend = {fobt:0, gastric:0};
+  const buckets = new Map();
+  let noSendF = 0, noSendG = 0;
   for(const p of State.session.merged){
     for(const k of ['fobt','gastric']){
-      const o = p[k]; if(!o) continue;
-      if(o.cancel) continue;
+      const o = p[k]; if(!o || o.cancel) continue;
       if(o.sendDate){
         const key = o.sendDate;
         if(!buckets.has(key)) buckets.set(key, {fobt:0, gastric:0});
         buckets.get(key)[k]++;
       } else if(o.status==='V'){
-        noSend[k]++;
+        if(k==='fobt') noSendF++; else noSendG++;
       }
     }
   }
   const dates = [...buckets.keys()].sort((a,b)=>{
-    // sort by MM/DD numerically
     const [am,ad]=a.split('/').map(Number), [bm,bd]=b.split('/').map(Number);
     return am-bm || ad-bd;
   });
-
-  if(!dates.length && noSend.fobt===0 && noSend.gastric===0){
+  if(!dates.length && noSendF===0 && noSendG===0){
     toast('尚無回收/送管紀錄','warn'); return;
   }
+  const series = dates.map(d=>({ date:d, fobt:buckets.get(d).fobt, gastric:buckets.get(d).gastric }));
 
-  // compute cumulative
-  let cumF=0, cumG=0;
-  const series = dates.map(d=>{
-    const b = buckets.get(d);
-    cumF += b.fobt; cumG += b.gastric;
-    return {date:d, fobt:b.fobt, gastric:b.gastric, cumF, cumG};
+  const data = {
+    sessionDate: State.session.date,
+    sessionDateDisplay: rocToDate(State.session.date),
+    fobtTotal: (State.session.cases.fobt||[]).length,
+    fobtDone:  (State.session.cases.fobt||[]).filter(r=>r.status==='V').length,
+    fobtSent:  (State.session.cases.fobt||[]).filter(r=>r.sendDate).length,
+    gastricTotal: (State.session.cases.gastric||[]).length,
+    gastricDone:  (State.session.cases.gastric||[]).filter(r=>r.status==='V').length,
+    gastricSent:  (State.session.cases.gastric||[]).filter(r=>r.sendDate).length,
+    noSendCount: noSendF + noSendG,
+    series,
+  };
+
+  const d = document.getElementById('dialog'), o = document.getElementById('overlay');
+  d.style.minWidth='820px'; d.style.maxWidth='90vw'; d.style.padding='0';
+  d.innerHTML = '<div class="chart-card" id="daily-chart-card"></div>';
+  renderDailyChart(d.querySelector('#daily-chart-card'), data);
+  o.classList.add('is-show');
+  const close = ()=>{
+    o.classList.remove('is-show');
+    d.style.minWidth=''; d.style.maxWidth=''; d.style.padding='';
+  };
+  // 提供關閉路徑：背景點擊、Esc、底部關閉鈕
+  o.onclick = e => { if(e.target===o) close(); };
+  const onKey = e => { if(e.key==='Escape'){ close(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+  d.querySelectorAll('[data-act="close"]').forEach(b => b.onclick = close);
+  d.querySelectorAll('[data-act="export"]').forEach(b => b.onclick = ()=>{
+    exportSVG('daily-curve-svg', `每日送管進度_${data.sessionDate}.png`);
+  });
+}
+
+function renderDailyChart(root, data){
+  root.innerHTML = '';
+
+  // Header
+  const head = document.createElement('div');
+  head.className = 'chart-head';
+  head.innerHTML = `
+    <div class="title">每日送管進度</div>
+    <div class="session">
+      <div class="roc">場次 ${data.sessionDate}</div>
+      <div>${data.sessionDateDisplay}</div>
+    </div>`;
+  root.appendChild(head);
+
+  // KPI row
+  const total = data.fobtTotal + data.gastricTotal;
+  const done = data.fobtDone + data.gastricDone;
+  const sent = data.fobtSent + data.gastricSent;
+  const noSend = data.noSendCount;
+  const kpi = document.createElement('div');
+  kpi.className = 'kpi-row';
+  kpi.innerHTML = `
+    <div class="kpi">
+      <div class="label">已回收</div>
+      <div class="value">${done}<span class="unit">/ ${total}</span></div>
+      <div class="sub">回收率 ${total ? (done/total*100).toFixed(1) : '0.0'}%</div>
+    </div>
+    <div class="kpi">
+      <div class="label">已送管</div>
+      <div class="value">${sent}<span class="unit">/ ${done}</span></div>
+      <div class="sub">送管率 ${done ? (sent/done*100).toFixed(1) : '0.0'}%</div>
+    </div>
+    <div class="kpi ${noSend>0?'warn':''}">
+      <div class="label">${noSend>0?'<span class="pulse"></span>':''}尚未送管</div>
+      <div class="value">${noSend}<span class="unit">支</span></div>
+      <div class="sub">${noSend>0?'建議優先處理':'無待處理檢體'}</div>
+    </div>`;
+  root.appendChild(kpi);
+
+  // Visual row: Ring + Curve
+  const visual = document.createElement('div');
+  visual.className = 'visual-row';
+  root.appendChild(visual);
+  renderRing(visual, data);
+  renderCurve(visual, data);
+
+  // Day section
+  renderDaySection(root, data);
+
+  // Footer
+  const cumF = data.series.reduce((s,d)=>s+d.fobt,0);
+  const cumG = data.series.reduce((s,d)=>s+d.gastric,0);
+  const foot = document.createElement('div');
+  foot.className = 'chart-foot';
+  foot.innerHTML = `
+    <div class="legend">
+      <div class="item">
+        <span class="swatch" style="background:linear-gradient(${CHART_COLORS.fobtTop},${CHART_COLORS.fobtBot})"></span>
+        <span class="name">腸</span><span class="count">${cumF}</span>
+      </div>
+      <div class="item">
+        <span class="swatch" style="background:linear-gradient(${CHART_COLORS.gasTop},${CHART_COLORS.gasBot})"></span>
+        <span class="name">胃</span><span class="count">${cumG}</span>
+      </div>
+      <div class="item target">
+        <span class="swatch"></span>
+        <span class="name" style="color:${CHART_COLORS.text2}">目標</span><span class="count">${total}</span>
+      </div>
+    </div>
+    <div class="chart-actions">
+      <button class="chart-btn" data-act="close">關閉</button>
+      <button class="chart-btn" data-act="export">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 2v8m0 0L5 7m3 3 3-3M3 12v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/>
+        </svg>
+        匯出 PNG
+      </button>
+    </div>`;
+  root.appendChild(foot);
+}
+
+function renderRing(host, data){
+  const side = document.createElement('div');
+  side.className = 'ring-side';
+  host.appendChild(side);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'ring-wrap';
+  side.appendChild(wrap);
+
+  const total = data.fobtTotal + data.gastricTotal;
+  const sentF = data.fobtSent, sentG = data.gastricSent;
+  const sentAll = sentF + sentG;
+  const pct = total ? (sentAll/total*100) : 0;
+
+  const size=240, cx=120, cy=120, r=96, stroke=20;
+  const circ = 2*Math.PI*r;
+  const fracG = total ? sentG/total : 0;
+  const fracF = total ? sentF/total : 0;
+  const gap = 0.004;
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
+  wrap.appendChild(svg);
+
+  svgEl(svg, 'circle', { cx, cy, r, fill:'none', stroke:CHART_COLORS.surface, 'stroke-width':stroke });
+
+  const defs = svgEl(svg, 'defs');
+  const gA = svgEl(defs, 'linearGradient', { id:'gasArc', x1:0, y1:0, x2:1, y2:1 });
+  svgEl(gA, 'stop', { offset:'0%',   'stop-color':CHART_COLORS.gasTop });
+  svgEl(gA, 'stop', { offset:'100%', 'stop-color':CHART_COLORS.gasBot });
+  const gB = svgEl(defs, 'linearGradient', { id:'fobtArc', x1:0, y1:0, x2:1, y2:1 });
+  svgEl(gB, 'stop', { offset:'0%',   'stop-color':CHART_COLORS.fobtTop });
+  svgEl(gB, 'stop', { offset:'100%', 'stop-color':CHART_COLORS.fobtBot });
+
+  const grp = svgEl(svg, 'g', { transform:`rotate(-90 ${cx} ${cy})` });
+  const gasArc = svgEl(grp, 'circle', {
+    cx, cy, r, fill:'none',
+    stroke:'url(#gasArc)', 'stroke-width':stroke, 'stroke-linecap':'round',
+    'stroke-dasharray':`0 ${circ}`, 'stroke-dashoffset':0,
+  });
+  const fobtArc = svgEl(grp, 'circle', {
+    cx, cy, r, fill:'none',
+    stroke:'url(#fobtArc)', 'stroke-width':stroke, 'stroke-linecap':'round',
+    'stroke-dasharray':`0 ${circ}`, 'stroke-dashoffset':-(fracG+gap)*circ,
+  });
+  const unsent = total - sentAll;
+  if(unsent > 0){
+    const fracU = unsent/total;
+    svgEl(grp, 'circle', {
+      cx, cy, r, fill:'none',
+      stroke:CHART_COLORS.hairline, 'stroke-width':stroke,
+      'stroke-dasharray':`${fracU*circ} ${circ}`,
+      'stroke-dashoffset':-(fracG+fracF+gap*2)*circ,
+    });
+  }
+  gasArc.style.transition = 'stroke-dasharray 700ms cubic-bezier(.16,.84,.3,1)';
+  fobtArc.style.transition = 'stroke-dasharray 700ms cubic-bezier(.16,.84,.3,1) 150ms';
+  requestAnimationFrame(()=>{
+    gasArc.setAttribute('stroke-dasharray', `${fracG*circ} ${circ}`);
+    fobtArc.setAttribute('stroke-dasharray', `${fracF*circ} ${circ}`);
   });
 
-  const w = 760, h = 360;
-  const padL=60, padR=40, padT=40, padB=50;
-  const cw = w-padL-padR, ch = h-padT-padB;
-  const maxDay = Math.max(1, ...series.map(s=>s.fobt+s.gastric));
-  const ticks = 4;
-  const groupW = dates.length ? cw / dates.length : cw;
-  const barW = Math.min(40, groupW*0.7);
+  const center = document.createElement('div');
+  center.className = 'ring-center';
+  center.innerHTML = `
+    <div class="eyebrow">送管完成度</div>
+    <div class="pct">${pct.toFixed(1)}<span class="pct-mark">%</span></div>
+    <div class="sub"><strong>${sentAll}</strong> / ${total} 支</div>`;
+  wrap.appendChild(center);
 
-  const yTicks = Array.from({length:ticks+1}, (_,i)=>{
-    const v = Math.round(maxDay * i/ticks);
-    const y = padT + ch - ch*(i/ticks);
-    return `<line x1="${padL}" y1="${y}" x2="${padL+cw}" y2="${y}" stroke="#eee" stroke-width="0.7"/>
-            <text x="${padL-6}" y="${y+3}" font-size="10" fill="#888" text-anchor="end" font-family="JetBrains Mono,monospace">${v}</text>`;
-  }).join('');
+  const split = document.createElement('div');
+  split.className = 'ring-split';
+  split.innerHTML = `
+    <div class="item"><span class="dot" style="background:${CHART_COLORS.fobtTop}"></span><span class="lbl">腸</span> <span class="num">${sentF}</span></div>
+    <div class="item"><span class="dot" style="background:${CHART_COLORS.gasTop}"></span><span class="lbl">胃</span> <span class="num">${sentG}</span></div>`;
+  side.appendChild(split);
+}
 
-  const bars = series.map((s,i)=>{
-    const x = padL + groupW*i + (groupW-barW)/2;
-    const hF = ch * (s.fobt/maxDay);
-    const hG = ch * (s.gastric/maxDay);
-    const yF = padT + ch - hF;
-    const yG = yF - hG;
-    return `<g>
-      <rect x="${x}" y="${yF}" width="${barW}" height="${hF}" fill="oklch(0.70 0.13 80)" rx="2"/>
-      <rect x="${x}" y="${yG}" width="${barW}" height="${hG}" fill="oklch(0.55 0.10 200)" rx="2"/>
-      <text x="${x+barW/2}" y="${yG-4}" font-size="10" text-anchor="middle" fill="#444" font-family="JetBrains Mono,monospace">${s.fobt+s.gastric}</text>
-      <text x="${x+barW/2}" y="${padT+ch+14}" font-size="10" text-anchor="middle" fill="#444" font-family="JetBrains Mono,monospace">${s.date}</text>
-    </g>`;
-  }).join('');
+function renderCurve(host, data){
+  const side = document.createElement('div');
+  side.className = 'curve-side';
+  host.appendChild(side);
 
-  const fAll = (State.session.cases.fobt||[]).length;
-  const gAll = (State.session.cases.gastric||[]).length;
-  const fDone = (State.session.cases.fobt||[]).filter(r=>r.status==='V').length;
-  const gDone = (State.session.cases.gastric||[]).filter(r=>r.status==='V').length;
-  const fSent = (State.session.cases.fobt||[]).filter(r=>r.sendDate).length;
-  const gSent = (State.session.cases.gastric||[]).filter(r=>r.sendDate).length;
+  const W=480, H=240, ML=36, MR=18, MT=16, MB=30;
+  const PW=W-ML-MR, PH=H-MT-MB;
 
-  const svg = `<svg id="daily-chart-svg" viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block" preserveAspectRatio="xMidYMin meet">
-    <rect width="${w}" height="${h}" fill="#fff"/>
-    <text x="${padL}" y="22" font-family="Noto Sans TC,sans-serif" font-size="14" font-weight="600" fill="#1a1c19">場次 ${State.session.date} · 每日送管進度</text>
-    <text x="${padL}" y="${padT-8}" font-family="JetBrains Mono,monospace" font-size="10" fill="#888">支數（按送管日分組 · 黃=腸 / 藍=胃）</text>
-    <!-- legend -->
-    <g transform="translate(${w-padR-180}, 14)">
-      <rect x="0" y="0" width="12" height="12" fill="oklch(0.70 0.13 80)"/>
-      <text x="16" y="10" font-size="11" fill="#3a3d38">腸 (累計 ${cumF})</text>
-      <rect x="90" y="0" width="12" height="12" fill="oklch(0.55 0.10 200)"/>
-      <text x="106" y="10" font-size="11" fill="#3a3d38">胃 (累計 ${cumG})</text>
-    </g>
-    ${yTicks}
-    ${bars}
-    <line x1="${padL}" y1="${padT+ch}" x2="${padL+cw}" y2="${padT+ch}" stroke="#666" stroke-width="1"/>
-    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+ch}" stroke="#666" stroke-width="1"/>
-  </svg>`;
+  const n = data.series.length;
+  const cumG = [], cumF = [];
+  let sg=0, sf=0;
+  data.series.forEach(d=>{ sg+=d.gastric; cumG.push(sg); sf+=d.fobt; cumF.push(sf); });
 
-  const d=document.getElementById('dialog'); const o=document.getElementById('overlay');
-  d.style.minWidth='820px'; d.style.maxWidth='90vw';
-  d.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:8px">
-      <h3 style="margin:0">本場次每日送管進度</h3>
-      <div style="font-size:11px;color:var(--ink-mute)">${State.session.date} · ${rocToDate(State.session.date)}</div>
-    </div>
-    <div style="display:flex;gap:14px;font-size:12px;color:var(--ink-2);margin-bottom:8px;flex-wrap:wrap">
-      <span>腸 已回收 <b class="rs-mono">${fDone}</b>/${fAll} · 已送管 <b class="rs-mono">${fSent}</b></span>
-      <span>胃 已回收 <b class="rs-mono">${gDone}</b>/${gAll} · 已送管 <b class="rs-mono">${gSent}</b></span>
-      ${(noSend.fobt+noSend.gastric)>0?`<span style="color:var(--warn)">⚠ ${noSend.fobt+noSend.gastric} 支已回收尚未送管</span>`:''}
-    </div>
-    <div style="border:1px solid var(--line);border-radius:6px;padding:8px;background:#fff;overflow:auto">
-      ${svg}
-    </div>
-    <div class="rs-dialog-actions" style="margin-top:14px">
-      <button class="rs-btn" data-act="close">關閉</button>
-      <button class="rs-btn is-primary" data-act="export">📥 匯出 PNG</button>
-    </div>
-  `;
-  o.classList.add('is-show');
-  const close=()=>{ o.classList.remove('is-show'); d.style.minWidth=''; d.style.maxWidth=''; };
-  d.querySelector('[data-act="close"]').onclick=close;
-  d.querySelector('[data-act="export"]').onclick=()=>exportSVG('daily-chart-svg', `每日送管進度_${State.session.date}.png`);
-  o.onclick=e=>{ if(e.target===o) close(); };
+  const target = data.fobtTotal + data.gastricTotal;
+  const cur = (cumG[n-1]||0) + (cumF[n-1]||0);
+  // 若沒有目標或目標 < 目前累計，scale 至目前累計值 + 一點 headroom
+  const ymBase = Math.max(target, cur, 1);
+  const { top:yMax, ticks } = niceScale(ymBase * 1.05, 4);
+
+  const xOf = i => ML + (n===1 ? PW/2 : (i/(n-1))*PW);
+  const yOf = v => MT + PH - (v/yMax)*PH;
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('id', 'daily-curve-svg');
+  svg.setAttribute('class', 'chart-svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  side.appendChild(svg);
+
+  // 背景塗深色:exportSVG 序列化後 canvas 預設白底會穿出
+  svgEl(svg, 'rect', { x:0, y:0, width:W, height:H, fill:CHART_COLORS.bg });
+
+  const defs = svgEl(svg, 'defs');
+  const gA = svgEl(defs, 'linearGradient', { id:'gasArea', x1:0, y1:0, x2:0, y2:1 });
+  svgEl(gA, 'stop', { offset:'0%',   'stop-color':CHART_COLORS.gasTop, 'stop-opacity':0.75 });
+  svgEl(gA, 'stop', { offset:'100%', 'stop-color':CHART_COLORS.gasBot, 'stop-opacity':0.1 });
+  const gB = svgEl(defs, 'linearGradient', { id:'fobtArea', x1:0, y1:0, x2:0, y2:1 });
+  svgEl(gB, 'stop', { offset:'0%',   'stop-color':CHART_COLORS.fobtTop, 'stop-opacity':0.85 });
+  svgEl(gB, 'stop', { offset:'100%', 'stop-color':CHART_COLORS.fobtBot, 'stop-opacity':0.15 });
+  const clip = svgEl(defs, 'clipPath', { id:'curveClip' });
+  const clipRect = svgEl(clip, 'rect', { x:ML, y:0, width:0, height:H });
+
+  ticks.forEach(t=>{
+    const y = yOf(t);
+    svgEl(svg, 'line', { x1:ML, x2:ML+PW, y1:y, y2:y, stroke:CHART_COLORS.grid });
+    svgEl(svg, 'text', {
+      x:ML-8, y:y+3, 'text-anchor':'end',
+      'font-size':10, fill:CHART_COLORS.text3, class:'axis-label',
+    }, t);
+  });
+  svgEl(svg, 'line', { x1:ML, x2:ML+PW, y1:MT+PH, y2:MT+PH, stroke:CHART_COLORS.hairline });
+
+  // 胃面積（底層）
+  let gasPath = `M${xOf(0)},${MT+PH}`;
+  for(let i=0;i<n;i++) gasPath += ` L${xOf(i)},${yOf(cumG[i])}`;
+  gasPath += ` L${xOf(n-1)},${MT+PH} Z`;
+  // 腸面積（疊在胃上）
+  let fobtPath = '';
+  for(let i=0;i<n;i++) fobtPath += (i===0?'M':' L') + `${xOf(i)},${yOf(cumG[i]+cumF[i])}`;
+  for(let i=n-1;i>=0;i--) fobtPath += ` L${xOf(i)},${yOf(cumG[i])}`;
+  fobtPath += ' Z';
+
+  const areaGroup = svgEl(svg, 'g', { 'clip-path':'url(#curveClip)' });
+  svgEl(areaGroup, 'path', { d:gasPath, fill:'url(#gasArea)', stroke:CHART_COLORS.gasTop, 'stroke-width':1.5, 'stroke-opacity':0.9 });
+  svgEl(areaGroup, 'path', { d:fobtPath, fill:'url(#fobtArea)', stroke:CHART_COLORS.fobtTop, 'stroke-width':1.5, 'stroke-opacity':0.9 });
+
+  clipRect.style.transition = 'width 900ms cubic-bezier(.16,.84,.3,1)';
+  requestAnimationFrame(()=>{ clipRect.setAttribute('width', PW); });
+
+  // 目標線
+  if(target > 0 && target <= yMax){
+    const targetY = yOf(target);
+    svgEl(svg, 'line', {
+      x1:ML, x2:ML+PW, y1:targetY, y2:targetY,
+      stroke:CHART_COLORS.target, 'stroke-width':1.5,
+      'stroke-dasharray':'4 4', opacity:0.7,
+    });
+    svgEl(svg, 'text', {
+      x:ML+PW-4, y:targetY-5, 'text-anchor':'end',
+      'font-size':9, fill:CHART_COLORS.target, class:'axis-label',
+      'font-weight':600, 'letter-spacing':'0.04em',
+    }, `目標 ${target}`);
+  }
+
+  // 當前位置 hairline
+  if(n > 0){
+    const currentX = xOf(n-1);
+    const currentY = yOf((cumG[n-1]||0)+(cumF[n-1]||0));
+    svgEl(svg, 'line', {
+      x1:currentX, x2:currentX, y1:currentY, y2:MT+PH,
+      stroke:CHART_COLORS.hairline, 'stroke-width':1, 'stroke-dasharray':'2 3',
+    });
+  }
+
+  // x 軸標籤
+  const labelEvery = n > 7 ? 2 : 1;
+  data.series.forEach((d,i)=>{
+    if(i % labelEvery !== 0 && i !== n-1 && i !== 0) return;
+    svgEl(svg, 'text', {
+      x:xOf(i), y:MT+PH+16, 'text-anchor':'middle',
+      'font-size':9, fill:CHART_COLORS.text3, class:'x-tick',
+    }, d.date);
+  });
+
+  // Tooltip
+  const tt = document.createElement('div');
+  tt.className = 'tooltip';
+  side.appendChild(tt);
+
+  const hitGroup = svgEl(svg, 'g');
+  data.series.forEach((d,i)=>{
+    const x = xOf(i);
+    const topY = yOf(cumG[i]+cumF[i]);
+    const gasY = yOf(cumG[i]);
+    const dotFobt = svgEl(svg, 'circle', { cx:x, cy:topY, r:3.5, fill:CHART_COLORS.fobtTop, stroke:CHART_COLORS.bg, 'stroke-width':2, opacity:0 });
+    const dotGas  = svgEl(svg, 'circle', { cx:x, cy:gasY, r:3.5, fill:CHART_COLORS.gasTop, stroke:CHART_COLORS.bg, 'stroke-width':2, opacity:0 });
+    const slot = PW / Math.max(n-1, 1);
+    const hit = svgEl(hitGroup, 'rect', {
+      x:x-slot/2, y:MT, width:slot, height:PH, fill:'transparent', style:'cursor:pointer',
+    });
+    const show = ()=>{
+      dotFobt.setAttribute('opacity', 1);
+      dotGas.setAttribute('opacity', 1);
+      tt.innerHTML = `
+        <div class="tt-date">${d.date} · 累計</div>
+        <div class="tt-row"><span class="lbl"><span class="dot" style="background:${CHART_COLORS.fobtTop}"></span>腸</span><span class="num">${cumF[i]}</span></div>
+        <div class="tt-row"><span class="lbl"><span class="dot" style="background:${CHART_COLORS.gasTop}"></span>胃</span><span class="num">${cumG[i]}</span></div>
+        <div class="tt-sep"></div>
+        <div class="tt-total"><span>累計合計</span><span class="num">${cumF[i]+cumG[i]} / ${target}</span></div>
+        <div class="tt-row" style="margin-top:6px;opacity:0.7">
+          <span class="lbl">當日新增</span><span class="num">+${d.fobt+d.gastric}</span>
+        </div>`;
+      positionTip(tt, side, svg, x, topY);
+      tt.classList.add('visible');
+    };
+    const hide = ()=>{
+      dotFobt.setAttribute('opacity', 0);
+      dotGas.setAttribute('opacity', 0);
+      tt.classList.remove('visible');
+    };
+    hit.addEventListener('mouseenter', show);
+    hit.addEventListener('mousemove', show);
+    hit.addEventListener('mouseleave', hide);
+  });
+}
+
+function renderDaySection(root, data){
+  const section = document.createElement('div');
+  section.className = 'day-section';
+  root.appendChild(section);
+
+  const peakDay = data.series.length
+    ? data.series.reduce((a,b)=>(b.fobt+b.gastric)>(a.fobt+a.gastric)?b:a, data.series[0])
+    : null;
+  const peakTotal = peakDay ? peakDay.fobt+peakDay.gastric : 0;
+  const activeDays = data.series.filter(d=>d.fobt+d.gastric>0).length;
+  const idleDays = data.series.length - activeDays;
+
+  const head = document.createElement('div');
+  head.className = 'day-section-head';
+  head.innerHTML = `
+    <span class="label">每日明細 · ${data.series.length} 天</span>
+    <button class="toggle" data-action="toggle">
+      <span class="toggle-label">展開</span>
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 4.5 6 7.5 9 4.5"/>
+      </svg>
+    </button>`;
+  section.appendChild(head);
+
+  const summary = document.createElement('div');
+  summary.className = 'day-summary';
+  summary.innerHTML = peakDay ? `
+    <div class="pip peak"><span class="dot"></span>峰值 <strong>${peakDay.date}</strong> · ${peakTotal} 支</div>
+    <div class="pip"><span class="dot"></span>有送管 <strong>${activeDays}</strong> 天</div>
+    <div class="pip"><span class="dot"></span>未送管 <strong>${idleDays}</strong> 天</div>
+  ` : `<div class="pip"><span class="dot"></span>尚無送管紀錄</div>`;
+  section.appendChild(summary);
+
+  const stripHead = document.createElement('div');
+  stripHead.className = 'day-strip-head';
+  stripHead.style.display = 'none';
+  stripHead.innerHTML = `
+    <span>日期</span><span>分佈</span>
+    <span class="num">腸</span><span class="num">胃</span><span class="num">合計</span>`;
+  section.appendChild(stripHead);
+
+  const list = document.createElement('div');
+  list.className = 'day-strip';
+  section.appendChild(list);
+
+  const maxDay = Math.max(...data.series.map(d=>d.fobt+d.gastric), 1);
+  data.series.forEach(d=>{
+    const dayTotal = d.fobt+d.gastric;
+    const isZero = dayTotal===0;
+    const isPeak = d === peakDay && dayTotal > 0;
+    const row = document.createElement('div');
+    row.className = 'day-row' + (isZero?' zero':'') + (isPeak?' peak':'');
+    const fobtPct = d.fobt/maxDay*100;
+    const gasPct  = d.gastric/maxDay*100;
+    row.innerHTML = `
+      <span class="date">${d.date}${isPeak?' ★':''}</span>
+      <span class="bar-cell">
+        <span class="bar-track">
+          <span class="bar-fobt" style="width:${fobtPct}%"></span>
+          <span class="bar-gas" style="width:${gasPct}%"></span>
+        </span>
+      </span>
+      <span class="num ${d.fobt===0?'dim':''}">${d.fobt||'—'}</span>
+      <span class="num ${d.gastric===0?'dim':''}">${d.gastric||'—'}</span>
+      <span class="num total">${dayTotal||'—'}</span>`;
+    list.appendChild(row);
+  });
+
+  const btn = head.querySelector('[data-action="toggle"]');
+  let expanded = false;
+  btn.addEventListener('click', ()=>{
+    expanded = !expanded;
+    btn.classList.toggle('expanded', expanded);
+    btn.querySelector('.toggle-label').textContent = expanded ? '收合' : '展開';
+    list.classList.toggle('expanded', expanded);
+    stripHead.style.display = expanded ? 'grid' : 'none';
+    summary.style.display = expanded ? 'none' : 'flex';
+  });
 }
 
 /* ── 共用 SVG → PNG 匯出 ── */

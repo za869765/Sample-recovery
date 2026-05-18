@@ -441,12 +441,58 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
   .chart-card .ring-wrap{width:200px;height:200px}
   .chart-card .ring-center .pct{font-size:40px}
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Read-only mode：URL ?view=1 進入，外部分享連結用
+   ───────────────────────────────────────────────────────────── */
+#readonly-banner{
+  display:none;
+  align-items:center;justify-content:center;gap:8px;
+  background:linear-gradient(90deg,oklch(0.88 0.13 78),oklch(0.94 0.07 78));
+  color:oklch(0.32 0.12 50);
+  font-size:12.5px;font-weight:500;letter-spacing:.02em;
+  padding:7px 16px;
+  border-bottom:1px solid oklch(0.78 0.13 78 / 0.6);
+}
+body.readonly #readonly-banner{display:flex}
+
+/* 隱藏所有「會改資料」的操作 UI */
+body.readonly .rs-recovdate,
+body.readonly #btn-batch-send,
+body.readonly #btn-print-pick,
+body.readonly #btn-sms-csv,
+body.readonly #btn-print-send,
+body.readonly #btn-reissue,
+body.readonly #btn-import-report,
+body.readonly #btn-export-cases,
+body.readonly #restock-strip,
+body.readonly #btn-open-new,
+body.readonly .rs-hints{display:none !important}
+
+/* 場次切換 dropdown：純文字不可點 */
+body.readonly #btn-switch-session{pointer-events:none;cursor:default;background:transparent}
+body.readonly #btn-switch-session svg{display:none}
+body.readonly #btn-switch-session:hover{background:transparent;border-color:transparent}
+
+/* 列表 row 內互動鎖死（純展示色塊） */
+body.readonly .rs-tg,
+body.readonly .rs-sendcell,
+body.readonly .rs-select,
+body.readonly .rs-cb{pointer-events:none}
+
+/* 保留：搜尋、SegmentedTab 篩選、每日圖表、KPI、跨場次圖表 — 純讀取/篩選不寫資料 */
 </style>
 </head>
 <body>
 
 <!-- ── ROOT ── -->
 <div class="rs-frame">
+
+  <!-- ─── Read-only banner (URL ?view=1 才顯示) ─── -->
+  <div id="readonly-banner">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1 7 s2.5 -4 6 -4 s6 4 6 4 s-2.5 4 -6 4 s-6 -4 -6 -4 z"/><circle cx="7" cy="7" r="2"/></svg>
+    <span>唯讀模式 · 此連結僅供查看，無法修改資料</span>
+  </div>
 
   <!-- ─── TOP BAR (shared) ─── -->
   <div class="rs-topbar" id="topbar">
@@ -810,7 +856,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.20';
+const APP_VERSION = 'v0.3.21';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2791,7 +2837,24 @@ document.addEventListener('keydown',e=>{
    INIT
    ═══════════════════════════════════════════════════════════════════ */
 document.getElementById('app-version').textContent = APP_VERSION;
-loadHome();
+
+// 唯讀模式：外部分享連結 ?view=1[&session=1150516]
+// session 帶值就直接進該場次的 read-only view，沒帶就進 home view 唯讀
+(function(){
+  const params = new URLSearchParams(location.search);
+  const isView = params.get('view') === '1';
+  const sessionId = params.get('session');
+  if(!isView){
+    loadHome();
+    return;
+  }
+  document.body.classList.add('readonly');
+  if(sessionId){
+    openSession(sessionId);
+  } else {
+    loadHome();
+  }
+})();
 </script>
 </body>
 </html>

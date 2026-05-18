@@ -9,3 +9,5 @@ node_modules/
 service-account*.json
 key*.json
 .wrangler/
+_design_v3/
+_design_unpacked/

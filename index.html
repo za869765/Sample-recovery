@@ -856,7 +856,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.21';
+const APP_VERSION = 'v0.3.22';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2346,7 +2346,7 @@ function renderDailyChart(root, data){
   const total = data.fobtTotal + data.gastricTotal;
   const done = data.fobtDone + data.gastricDone;
   const sent = data.fobtSent + data.gastricSent;
-  const noSend = data.noSendCount;
+  const undone = Math.max(0, total - done);
   const kpi = document.createElement('div');
   kpi.className = 'kpi-row';
   kpi.innerHTML = `
@@ -2360,10 +2360,10 @@ function renderDailyChart(root, data){
       <div class="value">${sent}<span class="unit">/ ${done}</span></div>
       <div class="sub">送管率 ${done ? (sent/done*100).toFixed(1) : '0.0'}%</div>
     </div>
-    <div class="kpi ${noSend>0?'warn':''}">
-      <div class="label">${noSend>0?'<span class="pulse"></span>':''}尚未送管</div>
-      <div class="value">${noSend}<span class="unit">支</span></div>
-      <div class="sub">${noSend>0?'建議優先處理':'無待處理檢體'}</div>
+    <div class="kpi ${undone>0?'warn':''}">
+      <div class="label">${undone>0?'<span class="pulse"></span>':''}尚未回收</div>
+      <div class="value">${undone}<span class="unit">支</span></div>
+      <div class="sub">${undone>0?'持續追蹤中':'全數回收完成'}</div>
     </div>`;
   root.appendChild(kpi);
 

@@ -775,7 +775,7 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M3 1.5 h7 v3 H3 Z M2 4.5 h9 v5 a1 1 0 0 1 -1 1 H3 a1 1 0 0 1 -1 -1 Z M4 7 h5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>
         列印待收檢
       </button>
-      <button class="rs-btn is-sm" id="btn-sms-csv" data-tip="下載催管 CSV：尚未回收名單（A姓名, B手機9碼無0, C編號），tel2 行動優先；無手機者照列以便人工外撥">
+      <button class="rs-btn is-sm" id="btn-sms-csv" data-tip="下載催管 CSV：尚未回收名單（A姓名, B手機9碼無0, C編號末3碼），tel2 行動優先；無手機者照列以便人工外撥">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 3.5 a1 1 0 0 1 1 -1 h7 a1 1 0 0 1 1 1 v5 a1 1 0 0 1 -1 1 H5 l-2 2 v-2 H3 a1 1 0 0 1 -1 -1 Z" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>
         催管簡訊
       </button>
@@ -856,7 +856,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.25';
+const APP_VERSION = 'v0.3.26';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2188,7 +2188,7 @@ td.chk .box{display:inline-block;width:16px;height:16px;border:1.4px solid #555;
   w.document.open(); w.document.write(html); w.document.close();
 }
 
-/* ── 催管簡訊 CSV：尚未回收名單（A姓名, B手機9碼無0, C編號），tel2 優先；無手機者也照列以便人工外撥 ── */
+/* ── 催管簡訊 CSV：尚未回收名單（A姓名, B手機9碼無0, C編號末3碼），tel2 優先；無手機者也照列以便人工外撥 ── */
 function exportSmsCsv(){
   if(!State.session || !State.session.merged?.length){ toast('無資料','warn'); return; }
   let pending = 0, missing = 0;
@@ -2201,7 +2201,7 @@ function exportSmsCsv(){
     const tel = p.tel2 || p.tel1 || '';
     const phone = tel ? (tel.startsWith('0') ? tel.slice(1) : tel) : '';
     if(!phone) missing++;
-    rows.push(`${p.name||''},${phone},${p.cisid||''}`);
+    rows.push(`${p.name||''},${phone},${(p.cisid||'').slice(-3)}`);
   }
   if(!pending){ toast('全部已回收，無催管對象','ok'); return; }
   // 加 UTF-8 BOM 讓 Excel 能正確顯示中文(預設 Big5 解讀會亂碼);多數簡訊平台 import 會跳過 BOM

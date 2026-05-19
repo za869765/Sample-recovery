@@ -102,6 +102,7 @@ npx wrangler pages deploy . `
 
 | 版本 | 重點 |
 |---|---|
+| v0.3.26 | 催管 CSV C 欄編號只取末 3 碼（cisid 是 1150516XXX 太長，護理師只需流水號末段） |
 | v0.3.25 | 催管 CSV 改 3 欄（姓名,手機,編號）；無手機者仍列入（之前會被 skip），方便人工外撥 |
 | v0.3.24 | 每日圖表「匯出 PNG」改純 SVG 重畫整張 dashboard（原本只抓中間曲線，KPI/Ring/Day Strip/Legend 都沒進 PNG） |
 | v0.3.23 | 催管 CSV 加 UTF-8 BOM 修 Excel 中文亂碼 |

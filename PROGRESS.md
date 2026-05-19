@@ -102,6 +102,7 @@ npx wrangler pages deploy . `
 
 | 版本 | 重點 |
 |---|---|
+| v0.3.24 | 每日圖表「匯出 PNG」改純 SVG 重畫整張 dashboard（原本只抓中間曲線，KPI/Ring/Day Strip/Legend 都沒進 PNG） |
 | v0.3.23 | 催管 CSV 加 UTF-8 BOM 修 Excel 中文亂碼 |
 | v0.3.22 | KPI 第三格改「尚未回收」（原「尚未送管」幾乎恆為 0 沒意義） |
 | v0.3.21 | 唯讀外部連結 `?view=1&session=XXX`（分享給上級看用） |

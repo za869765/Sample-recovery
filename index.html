@@ -870,7 +870,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.29';
+const APP_VERSION = 'v0.3.30';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1518,8 +1518,9 @@ function renderCases(){
   const all = State.session.merged;
   // 人 = 一個 merged row；支 = 試管數（腸/胃各 1 支，可能 0~2 支/人）
   const sumS = pred => all.reduce((n,p)=>n+(p.fobt&&pred(p.fobt)?1:0)+(p.gastric&&pred(p.gastric)?1:0),0);
-  const allP = all.length;
-  const allS = sumS(()=>true);
+  // 總人/支：排除全部都 cancel 的人；總支排除 cancel 的支。退掛 = cancel=true 不算入分母。
+  const allP = all.filter(p => (p.fobt && !p.fobt.cancel) || (p.gastric && !p.gastric.cancel)).length;
+  const allS = sumS(o=>!o.cancel);
   const counts = {
     all: allP,
     pending: all.filter(p=>{
@@ -1528,9 +1529,12 @@ function renderCases(){
       return fobtPending || gPending;
     }).length,
     done: all.filter(p=>{
-      const fOk = !p.fobt || p.fobt.status==='V' || p.fobt.cancel;
-      const gOk = !p.gastric || p.gastric.status==='V' || p.gastric.cancel;
-      return fOk && gOk && (p.fobt||p.gastric);
+      const fActive = p.fobt && !p.fobt.cancel;
+      const gActive = p.gastric && !p.gastric.cancel;
+      if (!fActive && !gActive) return false;  // 整個人都 cancel → 不算 done
+      const fDone = !fActive || p.fobt.status==='V';
+      const gDone = !gActive || p.gastric.status==='V';
+      return fDone && gDone;
     }).length,
     referral: all.filter(p=>p.fobt?.referral||p.gastric?.referral).length,
     missed: all.filter(p=>p.fobt?.missed||p.gastric?.missed).length,
@@ -1567,7 +1571,7 @@ function renderCases(){
   const fH = fobtArr.filter(r=>!sub.has(r.cisid));
   const fS = fobtArr.filter(r=>sub.has(r.cisid));
   const cellOf = (arr)=>({
-    all: arr.length,
+    all: arr.filter(r=>!r.cancel).length,  // 排除退掛
     done: arr.filter(r=>r.status==='V').length,
     pos: arr.filter(r=>r.report==='異常').length,
     norm: arr.filter(r=>r.report==='正常').length,

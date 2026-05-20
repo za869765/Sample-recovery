@@ -796,7 +796,7 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 2 v9 M2 6.5 h9" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
         加掛
       </button>
-      <button class="rs-btn is-sm" id="btn-withdraw" data-tip="退掛：原本有但要回收試劑管，清空該人該篩的回收/送管/報告欄位並標記取消，耗材 −1">
+      <button class="rs-btn is-sm" id="btn-withdraw" data-tip="退掛：將該人從名冊撤掉並清空回收/送管/報告欄位；有回收管不扣消耗，無回收管補+1">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 6.5 h9 M3 4 h7 M3 9 h7" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>
         退掛
       </button>
@@ -869,7 +869,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.27';
+const APP_VERSION = 'v0.3.28';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -3161,12 +3161,21 @@ function openWithdrawDialog(){
   const d=document.getElementById('dialog'); const o=document.getElementById('overlay');
   d.innerHTML = `
     <h3>退掛</h3>
-    <p style="margin-bottom:10px">原本有但要回收試劑管時使用。輸入編號（末 3-4 碼或 13 全碼）找到該人，選腸或胃後：<br>
-       <b>① 清空 回收/送管/報告/轉介/未做腸鏡（A~D 姓名電話保留）</b>　<b>② K 欄標記取消追蹤</b>　<b>③ 對應「補腸/補胃」耗材 −1</b></p>
+    <p style="margin-bottom:10px">將該人從名冊撤掉。輸入編號（末 3-4 碼或 13 全碼）找到該人，選回收狀況 + 腸/胃 後：<br>
+       <b>① 清空 回收/送管/報告/轉介/未做腸鏡（A~D 姓名電話保留）</b>　<b>② K 欄標記取消追蹤</b>　<b>③ 依回收狀況決定耗材計數</b></p>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
       <span style="font-size:13px;color:var(--ink-mute)">編號：</span>
       <input class="rs-input is-mono" id="withdraw-search" placeholder="如 1013 或 013" style="width:160px" autofocus>
       <span id="withdraw-found" style="font-size:13px;color:var(--ink-mute)">…</span>
+    </div>
+    <div style="display:flex;gap:14px;align-items:center;margin:8px 0 6px;padding:6px 10px;background:var(--surface-alt);border-radius:4px">
+      <span style="font-size:12.5px;color:var(--ink-mute)">回收狀況：</span>
+      <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
+        <input type="radio" name="withdraw-returned" value="1" checked> 有回收管 <span style="color:var(--ink-faint);font-size:11px">(試劑已收回，不扣消耗)</span>
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
+        <input type="radio" name="withdraw-returned" value="0"> 無回收管 <span style="color:var(--bad);font-size:11px">(試劑未收回，補+1)</span>
+      </label>
     </div>
     <div id="withdraw-actions" style="display:flex;gap:8px;margin-top:8px"></div>
     <div class="rs-dialog-actions" style="margin-top:14px">
@@ -3201,9 +3210,13 @@ function openWithdrawDialog(){
     actions.innerHTML = mkBtn('fobt','退掛腸篩','var(--warn)') + mkBtn('gastric','退掛胃篩','var(--accent)');
     actions.querySelectorAll('[data-withdraw]').forEach(b=>b.onclick=async()=>{
       const kind=b.dataset.withdraw;
+      const returned = d.querySelector('input[name="withdraw-returned"]:checked').value === '1';
+      const restockNote = returned
+        ? '• 耗材計數不動（試劑已收回）'
+        : '• 補'+(kind==='fobt'?'腸':'胃')+'試劑 +1（試劑未收回，視為額外消耗）';
       const ok = await dialog(`<h3>確認退掛 ${kind==='fobt'?'腸':'胃'}篩</h3>
-        <p>個案 <b>${escapeHTML(p.name||'')}</b>（${p.cisid}）的<b>${kind==='fobt'?'腸':'胃'}</b>篩：</p>
-        <p>• 清空 回收 / 送管日 / 報告 / 待轉介 / 未做腸鏡<br>• K 欄標記取消追蹤<br>• 耗材 −1（本機計數）</p>`,
+        <p>個案 <b>${escapeHTML(p.name||'')}</b>（${p.cisid}）的<b>${kind==='fobt'?'腸':'胃'}</b>篩 — <b style="color:${returned?'var(--ok)':'var(--bad)'}">${returned?'有回收管':'無回收管'}</b>：</p>
+        <p>• 清空 回收 / 送管日 / 報告 / 待轉介 / 未做腸鏡<br>• K 欄標記取消追蹤<br>${restockNote}</p>`,
         [{label:'取消'},{label:'確認退掛', primary:true}]);
       if(ok!==1) return;
       // 退掛：清空 E~J + cancel=true
@@ -3211,8 +3224,8 @@ function openWithdrawDialog(){
       await updateField(p.cisid, kind, {
         status:'', report:'', referral:false, missed:false, dispatch:'', sendDate:'', cancel:true,
       });
-      addRestock(kind, -1);
-      toast(`已退掛 ${kind==='fobt'?'腸':'胃'}篩`,'ok');
+      if(!returned) addRestock(kind, 1);
+      toast(`已退掛 ${kind==='fobt'?'腸':'胃'}篩${returned?'':'（補+1）'}`,'ok');
       close();
     });
   };

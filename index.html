@@ -99,6 +99,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
 .rs-tbl tbody tr.is-done .rs-cisid{color:var(--ink-mute)}
 .rs-tbl tbody tr.is-cancelled{color:var(--ink-faint);text-decoration:line-through;text-decoration-color:var(--ink-faint)}
 .rs-tbl tbody tr.is-focus{background:color-mix(in oklab,var(--accent-soft) 65%,white);box-shadow:inset 3px 0 0 var(--accent)}
+.rs-tbl tbody tr.is-subsidy td:first-child{position:relative}
+.rs-tbl tbody tr.is-subsidy td:first-child::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bad);z-index:1}
+.rs-mark-sub{display:inline-flex;align-items:center;height:16px;padding:0 5px;margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.04em;border-radius:3px;background:var(--bad-soft);color:var(--bad);border:1px solid color-mix(in oklab,var(--bad) 30%,white);vertical-align:middle}
 
 /* ── hero cisid cell ── */
 .rs-cisid{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:5px;background:var(--surface-alt);border:1px solid var(--line-strong);font-family:var(--mono);font-size:12.5px;font-weight:600;letter-spacing:-.01em;color:var(--ink);cursor:pointer;transition:background .12s,border-color .12s,transform .08s;user-select:none}
@@ -463,6 +466,8 @@ body.readonly #btn-print-pick,
 body.readonly #btn-sms-csv,
 body.readonly #btn-print-send,
 body.readonly #btn-reissue,
+body.readonly #btn-add-case,
+body.readonly #btn-withdraw,
 body.readonly #btn-import-report,
 body.readonly #btn-export-cases,
 body.readonly #restock-strip,
@@ -787,6 +792,14 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2.5 6.5 a4 4 0 1 1 1.2 2.8 M2.5 3.5 v3 h3" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         重補檢體
       </button>
+      <button class="rs-btn is-sm" id="btn-add-case" data-tip="加掛：原本沒做但衛生所查詢有的人，補登入名冊並發管，耗材 +1">
+        <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 2 v9 M2 6.5 h9" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        加掛
+      </button>
+      <button class="rs-btn is-sm" id="btn-withdraw" data-tip="退掛：原本有但要回收試劑管，清空該人該篩的回收/送管/報告欄位並標記取消，耗材 −1">
+        <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 6.5 h9 M3 4 h7 M3 9 h7" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>
+        退掛
+      </button>
       <button class="rs-btn is-sm" id="btn-daily-chart" data-tip="本場次每日回收進度圖表（可匯出 PNG）">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 11 v-3 M5 11 v-6 M8 11 v-4 M11 11 v-8 M1 12 h11" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>
         每日圖表
@@ -856,7 +869,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.26';
+const APP_VERSION = 'v0.3.27';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1664,16 +1677,19 @@ function rowHTML(p){
   const isAllDone = (!p.fobt || p.fobt.status==='V' || p.fobt.cancel) && (!p.gastric || p.gastric.status==='V' || p.gastric.cancel) && (p.fobt||p.gastric);
   const isAllCancel = p.fobt?.cancel && (!p.gastric || p.gastric.cancel);
   const focusCls = State.caseFocus && p.cisid.endsWith(State.caseFocus) ? 'is-focus' : '';
+  const isSubsidy = State.subsidy && State.subsidy.has(p.cisid);
   const kinds = [p.fobt?'腸':null, p.gastric?'胃':null].filter(Boolean).join('+') || '—';
-  const cisidTip = `行動醫院編號 ${p.cisid}\n名冊：${kinds}\n發管 ${normMMDD(p.dispatch)}`;
+  const subsidyNote = isSubsidy ? '\n💠 市府補助' : '';
+  const cisidTip = `行動醫院編號 ${p.cisid}\n名冊：${kinds}${subsidyNote}\n發管 ${normMMDD(p.dispatch)}`;
   // We use fobt as primary cancel toggle (most operations are fobt-side)
   const cancelKind = p.fobt ? 'fobt' : 'gastric';
   const fullTip = cisidTip + '\n\n點編號 = 同時切換腸+胃（依資料源、依模式）';
-  return `<tr class="${isAllDone?'is-done':''} ${isAllCancel?'is-cancelled':''} ${focusCls}" data-cisid="${p.cisid}">
+  const subBadge = isSubsidy ? `<span class="rs-mark-sub" data-tip="市府補助 (非45-75)">補</span>` : '';
+  return `<tr class="${isAllDone?'is-done':''} ${isAllCancel?'is-cancelled':''} ${focusCls} ${isSubsidy?'is-subsidy':''}" data-cisid="${p.cisid}">
     <td>
       <button class="rs-cisid" data-toggle-all="${p.cisid}" data-tip="${fullTip}" style="cursor:pointer;font-size:13.5px">
         <span class="rs-cisid-tail">${tail}</span>
-      </button>
+      </button>${subBadge}
       <span class="rs-tg-group">${chipHTML(p,'fobt')}${chipHTML(p,'gastric')}</span>
     </td>
     <td style="font-weight:500" data-tip="${p.name||''}">${p.name||''}</td>
@@ -1893,6 +1909,8 @@ document.getElementById('btn-print-pick').onclick = ()=>printPickList();
 document.getElementById('btn-sms-csv').onclick = ()=>exportSmsCsv();
 document.getElementById('btn-print-send').onclick = ()=>printSendListWithPicker();
 document.getElementById('btn-reissue').onclick = ()=>openReissueDialog();
+document.getElementById('btn-add-case').onclick = ()=>openAddCaseDialog();
+document.getElementById('btn-withdraw').onclick = ()=>openWithdrawDialog();
 document.getElementById('btn-daily-chart').onclick = ()=>openDailyChart();
 document.getElementById('btn-batch-send').onclick = ()=>batchSendAll();
 
@@ -3047,6 +3065,154 @@ function openReissueDialog(){
       await updateField(p.cisid, kind, {status:'', sendDate:''});
       addRestock(kind, 1);
       toast(`已重補 ${kind==='fobt'?'腸':'胃'}試劑`,'ok');
+      close();
+    });
+  };
+  input.oninput=refresh;
+  input.onkeydown=e=>{ if(e.key==='Escape') close(); };
+  refresh();
+}
+
+/* ── 加掛 dialog ── */
+function openAddCaseDialog(){
+  if(!State.session){ toast('請先開場次','warn'); return; }
+  const d=document.getElementById('dialog'); const o=document.getElementById('overlay');
+  d.innerHTML = `
+    <h3>加掛</h3>
+    <p style="margin-bottom:10px">原本沒做但衛生所查詢有的人，補登入名冊並發管。<br>
+       <b>① 寫入該篩分頁（含當日發管日）</b>　<b>② 對應「補腸/補胃」耗材 +1</b></p>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+      <span style="font-size:13px;color:var(--ink-mute)">加到：</span>
+      <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
+        <input type="radio" name="addcase-type" value="fobt" checked> 腸篩
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
+        <input type="radio" name="addcase-type" value="gastric"> 胃篩
+      </label>
+    </div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin-bottom:8px">
+      <span style="font-size:13px;color:var(--ink-mute)">編號 *</span>
+      <input class="rs-input is-mono" id="ac-cisid" placeholder="13 碼掛號序號，如 1150520001" maxlength="13">
+      <span style="font-size:13px;color:var(--ink-mute)">姓名 *</span>
+      <input class="rs-input" id="ac-name" placeholder="姓名">
+      <span style="font-size:13px;color:var(--ink-mute)">身分證</span>
+      <input class="rs-input is-mono" id="ac-idno" placeholder="A123456789" maxlength="10" style="text-transform:uppercase">
+      <span style="font-size:13px;color:var(--ink-mute)">手機1 室內</span>
+      <input class="rs-input is-mono" id="ac-tel1" placeholder="06-XXXXXXX">
+      <span style="font-size:13px;color:var(--ink-mute)">手機2 行動</span>
+      <input class="rs-input is-mono" id="ac-tel2" placeholder="09XXXXXXXX">
+    </div>
+    <p style="font-size:11.5px;color:var(--ink-faint);margin:6px 0 0">發管日 = 場次日 (${rocToMMDD(State.session.date)})，送管日留空待回收後再填。</p>
+    <div class="rs-dialog-actions" style="margin-top:14px">
+      <button class="rs-btn" data-act="cancel">取消</button>
+      <button class="rs-btn is-primary" data-act="ok">確認加掛</button>
+    </div>
+  `;
+  o.classList.add('is-show');
+  const close=()=>{ o.classList.remove('is-show'); };
+  d.querySelector('[data-act="cancel"]').onclick=close;
+  o.onclick=e=>{ if(e.target===o) close(); };
+  document.getElementById('ac-cisid').focus();
+  d.querySelector('[data-act="ok"]').onclick=async()=>{
+    const type = d.querySelector('input[name="addcase-type"]:checked').value;
+    const cisid = document.getElementById('ac-cisid').value.trim();
+    const name = document.getElementById('ac-name').value.trim();
+    const idno = document.getElementById('ac-idno').value.trim().toUpperCase();
+    const tel1 = document.getElementById('ac-tel1').value.trim();
+    const tel2 = document.getElementById('ac-tel2').value.trim();
+    if(!cisid){ toast('請填編號','warn'); return; }
+    if(!name){ toast('請填姓名','warn'); return; }
+    // 檢查當前場次是否已存在
+    const exist = State.session.merged.find(p=>p.cisid===cisid);
+    if(exist && exist[type]){
+      toast(`編號 ${cisid} 在${type==='fobt'?'腸':'胃'}篩已存在`,'bad');
+      return;
+    }
+    setSync('syncing','加掛中…');
+    try{
+      const res = await fetch('/api/add_case', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ date:State.session.date, type, case:{cisid, name, idno, tel1, tel2} }),
+      });
+      const j = await res.json();
+      if(!j.ok) throw new Error(j.error||'add_case failed');
+      // 推入本機 cases，重建 merged
+      const newCase = {
+        rowNum: 0, name, idno, tel1, tel2,
+        status:'', report:'', referral:false, missed:false,
+        dispatch: j.dispatch, sendDate:'', cancel:false, cisid,
+      };
+      State.session.cases[type].push(newCase);
+      buildMerged();
+      addRestock(type, 1);  // renderCases() in there
+      setSync('ok','已加掛');
+      toast(`已加掛 ${name} 到${type==='fobt'?'腸':'胃'}篩`,'ok');
+      close();
+    }catch(e){
+      setSync('bad','加掛失敗');
+      toast('加掛失敗：'+e.message,'bad');
+    }
+  };
+}
+
+/* ── 退掛 dialog ── */
+function openWithdrawDialog(){
+  if(!State.session?.merged?.length){ toast('無資料','warn'); return; }
+  const d=document.getElementById('dialog'); const o=document.getElementById('overlay');
+  d.innerHTML = `
+    <h3>退掛</h3>
+    <p style="margin-bottom:10px">原本有但要回收試劑管時使用。輸入編號（末 3-4 碼或 13 全碼）找到該人，選腸或胃後：<br>
+       <b>① 清空 回收/送管/報告/轉介/未做腸鏡（A~D 姓名電話保留）</b>　<b>② K 欄標記取消追蹤</b>　<b>③ 對應「補腸/補胃」耗材 −1</b></p>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <span style="font-size:13px;color:var(--ink-mute)">編號：</span>
+      <input class="rs-input is-mono" id="withdraw-search" placeholder="如 1013 或 013" style="width:160px" autofocus>
+      <span id="withdraw-found" style="font-size:13px;color:var(--ink-mute)">…</span>
+    </div>
+    <div id="withdraw-actions" style="display:flex;gap:8px;margin-top:8px"></div>
+    <div class="rs-dialog-actions" style="margin-top:14px">
+      <button class="rs-btn" data-close>關閉</button>
+    </div>
+  `;
+  o.classList.add('is-show');
+  const input=document.getElementById('withdraw-search');
+  const found=document.getElementById('withdraw-found');
+  const actions=document.getElementById('withdraw-actions');
+  const close=()=>{ o.classList.remove('is-show'); };
+  d.querySelector('[data-close]').onclick=close;
+  o.onclick=e=>{ if(e.target===o) close(); };
+
+  const refresh=()=>{
+    const q=input.value.trim();
+    actions.innerHTML='';
+    if(!q){ found.textContent='請輸入編號'; found.style.color='var(--ink-mute)'; return; }
+    const matches = State.session.merged.filter(p=>p.cisid.endsWith(q));
+    if(!matches.length){ found.textContent='找不到 '+q; found.style.color='var(--bad)'; return; }
+    if(matches.length>1){ found.textContent=`找到 ${matches.length} 筆，請輸入更多位數`; found.style.color='var(--warn)'; return; }
+    const p=matches[0];
+    found.innerHTML=`<b>${escapeHTML(p.name||'(無名)')}</b>　<span class="rs-mono">${p.cisid}</span>`;
+    found.style.color='var(--ink)';
+    const mkBtn=(kind,label,color)=>{
+      const obj=p[kind];
+      if(!obj){ return `<button class="rs-btn" disabled>${label}（無此名冊）</button>`; }
+      if(obj.cancel){ return `<button class="rs-btn" disabled>${label}（已取消）</button>`; }
+      const stateLbl = obj.sendDate?`已送管 ${obj.sendDate}`:obj.status==='V'?'已回收':'未回收';
+      return `<button class="rs-btn is-primary" data-withdraw="${kind}" style="background:${color};border-color:${color}">${label} <span style="opacity:.8;font-size:11px;margin-left:4px">(${stateLbl})</span></button>`;
+    };
+    actions.innerHTML = mkBtn('fobt','退掛腸篩','var(--warn)') + mkBtn('gastric','退掛胃篩','var(--accent)');
+    actions.querySelectorAll('[data-withdraw]').forEach(b=>b.onclick=async()=>{
+      const kind=b.dataset.withdraw;
+      const ok = await dialog(`<h3>確認退掛 ${kind==='fobt'?'腸':'胃'}篩</h3>
+        <p>個案 <b>${escapeHTML(p.name||'')}</b>（${p.cisid}）的<b>${kind==='fobt'?'腸':'胃'}</b>篩：</p>
+        <p>• 清空 回收 / 送管日 / 報告 / 待轉介 / 未做腸鏡<br>• K 欄標記取消追蹤<br>• 耗材 −1（本機計數）</p>`,
+        [{label:'取消'},{label:'確認退掛', primary:true}]);
+      if(ok!==1) return;
+      // 退掛：清空 E~J + cancel=true
+      setRecov(p.cisid, kind, '');
+      await updateField(p.cisid, kind, {
+        status:'', report:'', referral:false, missed:false, dispatch:'', sendDate:'', cancel:true,
+      });
+      addRestock(kind, -1);
+      toast(`已退掛 ${kind==='fobt'?'腸':'胃'}篩`,'ok');
       close();
     });
   };

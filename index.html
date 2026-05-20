@@ -152,6 +152,7 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 .rs-restock-btn:disabled{opacity:.4;cursor:not-allowed}
 .rs-restock-val{font-family:var(--mono);font-weight:700;font-size:14px;min-width:24px;text-align:center;color:var(--ink)}
 .rs-restock-unit{font-size:11px;color:var(--ink-mute)}
+.rs-restock-formula{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);padding:0 4px;letter-spacing:.01em}
 
 /* ── age tag, sex glyph ── */
 .rs-age{display:inline-flex;align-items:center;height:18px;padding:0 5px;font-family:var(--mono);font-size:10.5px;border-radius:3px;background:var(--surface-alt);border:1px solid var(--line);color:var(--ink-mute)}
@@ -869,7 +870,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.28';
+const APP_VERSION = 'v0.3.29';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1599,23 +1600,30 @@ function renderCases(){
 
   // 重補耗材記錄（不寫試算表，本機 localStorage per 場次）
   const rs = State.restock || {fobt:0, gastric:0};
+  const fobtIssued = (State.session.cases.fobt||[]).filter(r => !r.cancel).length;
+  const gastricIssued = (State.session.cases.gastric||[]).filter(r => !r.cancel).length;
+  const fobtTotal = fobtIssued + rs.fobt;
+  const gastricTotal = gastricIssued + rs.gastric;
+  const totalTip = (kind, issued, restock, total) => `${kind==='fobt'?'腸':'胃'}已發 ${issued} 支 + 補${kind==='fobt'?'腸':'胃'} ${restock} 支 = ${total} 支\n+/− 即調整補${kind==='fobt'?'腸':'胃'}試劑`;
   document.getElementById('restock-strip').innerHTML = `
-    <span class="rs-restock-lbl">耗材重補</span>
-    <span class="rs-restock-item">
-      <span class="rs-restock-name">補腸試劑</span>
-      <button class="rs-restock-btn" data-restock="fobt" data-delta="-1" ${rs.fobt<=0?'disabled':''} title="−1">−</button>
-      <span class="rs-restock-val">${rs.fobt}</span>
-      <button class="rs-restock-btn" data-restock="fobt" data-delta="1" title="+1">+</button>
+    <span class="rs-restock-lbl">耗材消耗</span>
+    <span class="rs-restock-item" data-tip="${totalTip('fobt', fobtIssued, rs.fobt, fobtTotal)}">
+      <span class="rs-restock-name">腸總消耗</span>
+      <button class="rs-restock-btn" data-restock="fobt" data-delta="-1" ${rs.fobt<=0?'disabled':''} title="補腸 −1">−</button>
+      <span class="rs-restock-val">${fobtTotal}</span>
+      <button class="rs-restock-btn" data-restock="fobt" data-delta="1" title="補腸 +1">+</button>
       <span class="rs-restock-unit">支</span>
+      <span class="rs-restock-formula">(發 ${fobtIssued}＋補 ${rs.fobt})</span>
     </span>
-    <span class="rs-restock-item">
-      <span class="rs-restock-name">補胃試劑</span>
-      <button class="rs-restock-btn" data-restock="gastric" data-delta="-1" ${rs.gastric<=0?'disabled':''} title="−1">−</button>
-      <span class="rs-restock-val">${rs.gastric}</span>
-      <button class="rs-restock-btn" data-restock="gastric" data-delta="1" title="+1">+</button>
+    <span class="rs-restock-item" data-tip="${totalTip('gastric', gastricIssued, rs.gastric, gastricTotal)}">
+      <span class="rs-restock-name">胃總消耗</span>
+      <button class="rs-restock-btn" data-restock="gastric" data-delta="-1" ${rs.gastric<=0?'disabled':''} title="補胃 −1">−</button>
+      <span class="rs-restock-val">${gastricTotal}</span>
+      <button class="rs-restock-btn" data-restock="gastric" data-delta="1" title="補胃 +1">+</button>
       <span class="rs-restock-unit">支</span>
+      <span class="rs-restock-formula">(發 ${gastricIssued}＋補 ${rs.gastric})</span>
     </span>
-    <span style="margin-left:auto;font-size:11px;color:var(--ink-mute)">總消耗 = 已送管 + 重補（僅本機紀錄，不寫試算表）</span>
+    <span style="margin-left:auto;font-size:11px;color:var(--ink-mute)">已發＝名冊未取消支數·補＝重補檢體/無回收退掛累計（本機）</span>
   `;
   document.querySelectorAll('[data-restock]').forEach(b=>b.onclick=()=>addRestock(b.dataset.restock, parseInt(b.dataset.delta,10)));
 

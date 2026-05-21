@@ -870,7 +870,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.32';
+const APP_VERSION = 'v0.3.33';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2247,35 +2247,117 @@ function exportSmsCsv(){
   toast(missing ? `已下載 ${rows.length} 筆（${missing} 人無手機，仍列姓名+編號）` : `已下載 ${rows.length} 筆`, 'ok');
 }
 
-/* ── 匯出當前場次 xlsx：兩 sheet (腸篩/胃篩)，欄位對齊試算表 A~L（編號移到第 1 欄方便閱讀） ── */
-function exportCasesXlsx(){
+/* ── 匯出當前場次 xlsx：以衛生所查詢 (工作表1) 為基底，6E/6F 結果 merge，未篩檢標示 ── */
+/* 規則：
+   - 衛生所查詢有但 6E/6F 沒做 → 檢體=未篩檢
+   - 6E/6F 有但衛生所沒列（如 1A03/1H01 單獨做胃篩）→ 額外添加到對應 sheet
+   - 腸篩報告: <50 或數字 ≤99 → 原值 + (陰性)
+   - 胃癌報告: Negative→陰性, Positive→陽性
+*/
+async function exportCasesXlsx(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
-  const fobt = State.session.cases.fobt||[];
-  const gastric = State.session.cases.gastric||[];
-  if(!fobt.length && !gastric.length){ toast('無資料可匯出','warn'); return; }
+  const proceed = await dialog(
+    `<h3>匯出當場個案</h3>
+     <p>需要拖入 <b>衛生所查詢.xls</b>（當天 HIS export）作為基底名單。</p>
+     <p style="font-size:12px;color:#666">未做篩檢的人會標示「未篩檢」；衛生所外的單獨胃篩（1A03/1H01 等）會在胃癌 sheet 額外添加。</p>`,
+    [{label:'取消'},{label:'選檔', primary:true}]
+  );
+  if(proceed!==1) return;
+
+  const baseList = await new Promise(resolve => {
+    const input = document.createElement('input');
+    input.type='file'; input.accept='.xls,.xlsx';
+    input.onchange = async ()=>{
+      const file = input.files?.[0];
+      if(!file){ resolve(null); return; }
+      try{
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, {type:'array', cellDates:false, cellNF:false});
+        const sh = wb.Sheets[wb.SheetNames[0]];
+        resolve(XLSX.utils.sheet_to_json(sh, {defval:'', raw:false}));
+      }catch(e){ toast('讀取衛生所查詢失敗：'+e.message,'bad'); resolve(null); }
+    };
+    input.click();
+  });
+  if(!baseList || !baseList.length){ toast('未選擇衛生所查詢檔','warn'); return; }
+
+  const base = baseList.map(r => ({
+    cisid: String(r.id93||'').trim(),
+    name:  String(r.name||'').trim(),
+    idno:  String(r.idno||'').trim(),
+    tel1:  String(r.tel1||'').trim(),
+    tel2:  String(r.cellular||r.tel2||'').trim(),
+  })).filter(p => p.idno || p.cisid);
+
+  const fobtRpt = s => {
+    const t = String(s||'').trim();
+    if(!t) return '';
+    if(/^<\s*\d+(\.\d+)?$/.test(t)) return `${t} (陰性)`;
+    if(/^-?\d+(\.\d+)?$/.test(t) && parseFloat(t) <= 99) return `${t} (陰性)`;
+    return t;
+  };
+  const gasRpt = s => {
+    const t = String(s||'').trim();
+    if(/^neg/i.test(t)) return '陰性';
+    if(/^pos/i.test(t)) return '陽性';
+    return t;
+  };
+  const specCell = c => {
+    if(!c) return '未篩檢';
+    if(c.cancel) return '退掛';
+    if(c.status==='V') return '已回收';
+    return '未篩檢';
+  };
+
+  function buildRows(cases, isFobt){
+    const annotate = isFobt ? fobtRpt : gasRpt;
+    const byIdno  = new Map(cases.filter(c=>c.idno).map(c=>[c.idno, c]));
+    const byCisid = new Map(cases.filter(c=>c.cisid).map(c=>[c.cisid, c]));
+    const used = new Set();
+    const rows = [];
+    for(const p of base){
+      const c = (p.idno && byIdno.get(p.idno)) || (p.cisid && byCisid.get(p.cisid)) || null;
+      if(c) used.add(c.cisid);
+      rows.push([
+        (c&&c.cisid)||p.cisid||'', (c&&c.name)||p.name||'', (c&&c.idno)||p.idno||'',
+        (c&&c.tel1)||p.tel1||'', (c&&c.tel2)||p.tel2||'',
+        specCell(c),
+        c ? annotate(c.report) : '',
+        c&&c.referral?'V':'', c&&c.missed?'V':'',
+        c&&c.dispatch||'', c&&c.sendDate||'',
+        c&&c.cancel?'V':'',
+      ]);
+    }
+    for(const c of cases){
+      if(used.has(c.cisid)) continue;
+      rows.push([
+        c.cisid||'', c.name||'', c.idno||'', c.tel1||'', c.tel2||'',
+        specCell(c),
+        annotate(c.report),
+        c.referral?'V':'', c.missed?'V':'',
+        c.dispatch||'', c.sendDate||'',
+        c.cancel?'V':'',
+      ]);
+    }
+    return rows;
+  }
+
   const headers = ['編號','姓名','身分證','手機1','手機2','檢體','報告','待轉介','未腸鏡','發管日','送管日','退掛'];
-  const toRow = c => [
-    c.cisid||'', c.name||'', c.idno||'', c.tel1||'', c.tel2||'',
-    c.status==='V' ? '已回收' : (c.status||''),
-    c.report||'',
-    c.referral?'V':'', c.missed?'V':'',
-    c.dispatch||'', c.sendDate||'',
-    c.cancel?'V':'',
-  ];
+  const colW = [{wch:14},{wch:10},{wch:12},{wch:12},{wch:12},{wch:8},{wch:14},{wch:8},{wch:8},{wch:10},{wch:10},{wch:6}];
   const wb = XLSX.utils.book_new();
-  const colW = [{wch:14},{wch:10},{wch:12},{wch:12},{wch:12},{wch:8},{wch:10},{wch:8},{wch:8},{wch:10},{wch:10},{wch:6}];
-  if(fobt.length){
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...fobt.map(toRow)]);
-    ws['!cols']=colW;
-    XLSX.utils.book_append_sheet(wb, ws, '腸篩');
-  }
-  if(gastric.length){
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...gastric.map(toRow)]);
-    ws['!cols']=colW;
-    XLSX.utils.book_append_sheet(wb, ws, '胃篩');
-  }
+
+  const fRows = buildRows(State.session.cases.fobt||[], true);
+  const wsF = XLSX.utils.aoa_to_sheet([headers, ...fRows]);
+  wsF['!cols']=colW;
+  XLSX.utils.book_append_sheet(wb, wsF, '腸篩');
+
+  const gRows = buildRows(State.session.cases.gastric||[], false);
+  const wsG = XLSX.utils.aoa_to_sheet([headers, ...gRows]);
+  wsG['!cols']=colW;
+  XLSX.utils.book_append_sheet(wb, wsG, '胃癌');
+
   XLSX.writeFile(wb, `場次_${State.session.date}_cases.xlsx`);
-  toast(`已匯出 腸 ${fobt.length} / 胃 ${gastric.length} 筆`,'ok');
+  toast(`已匯出 腸 ${fRows.length} / 胃 ${gRows.length} 列`,'ok');
 }
 
 function escapeHTML(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }

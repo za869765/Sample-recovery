@@ -474,6 +474,7 @@ body.readonly #btn-add-case,
 body.readonly #btn-withdraw,
 body.readonly #btn-import-report,
 body.readonly #btn-export-cases,
+body.readonly #btn-export-overview,
 body.readonly #restock-strip,
 body.readonly #btn-open-new,
 body.readonly .rs-hints{display:none !important}
@@ -812,9 +813,13 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 -3 l3 3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         匯入報告
       </button>
-      <button class="rs-btn is-sm" id="btn-export-cases" data-tip="下載當前場次所有個案">
+      <button class="rs-btn is-sm" id="btn-export-cases" data-tip="下載當前場次所有個案（兩個 sheet 腸/胃 分開）">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 3 l3 -3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         匯出
+      </button>
+      <button class="rs-btn is-sm" id="btn-export-overview" data-tip="匯出畫面檔：每人一列同時顯示腸+胃報告，含顏色標記">
+        <svg width="13" height="13" viewBox="0 0 13 13"><rect x="1.5" y="2" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M1.5 5 h10 M6.5 5 v6" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+        畫面檔
       </button>
     </div>
 
@@ -873,7 +878,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.40';
+const APP_VERSION = 'v0.3.41';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1919,6 +1924,7 @@ async function updateField(cisid, kind, updates){
 document.getElementById('btn-open-new').onclick = openUpload;
 document.getElementById('btn-export-chart').onclick = exportChartPNG;
 document.getElementById('btn-export-cases').onclick = exportCasesXlsx;
+document.getElementById('btn-export-overview').onclick = exportOverview;
 document.getElementById('btn-open-existing').onclick = loadHome;
 document.getElementById('btn-home').onclick = loadHome;
 document.getElementById('btn-upload-back').onclick = loadHome;
@@ -2505,6 +2511,110 @@ async function exportCasesXlsx(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   toast(`已匯出 腸 ${fRows.length} / 胃 ${gRows.length} 列`,'ok');
+}
+
+/* ── 匯出畫面檔 xlsx：每人一列，腸+胃並列，顏色標記（陽性紅/陰性藍/已回收綠/未篩檢灰）── */
+async function exportOverview(){
+  if(!State.session){ toast('未開啟場次','warn'); return; }
+  const merged = State.session.merged || [];
+  if(!merged.length){ toast('無資料可匯出','warn'); return; }
+
+  const specOf = c => {
+    if(!c) return '—';
+    if(c.cancel) return '退掛';
+    if(c.status==='V') return '已回收';
+    return '未篩檢';
+  };
+  const rows = merged.map(p => ({
+    cisid: p.cisid||'',
+    name:  p.name||'',
+    idno:  p.idno||'',
+    tel1:  p.tel1||'',
+    tel2:  p.tel2||'',
+    fobtSpec: specOf(p.fobt),
+    gasSpec:  specOf(p.gastric),
+    fobtSend: p.fobt?.sendDate || '',
+    gasSend:  p.gastric?.sendDate || '',
+    fobtReport: p.fobt ? annotateReport(p.fobt.report,'fobt') : '',
+    gasReport:  p.gastric ? annotateReport(p.gastric.report,'gastric') : '',
+    referral: (p.fobt?.referral || p.gastric?.referral) ? 'V' : '',
+    missed:   (p.fobt?.missed   || p.gastric?.missed)   ? 'V' : '',
+    cancel:   ((!p.fobt || p.fobt.cancel) && (!p.gastric || p.gastric.cancel)) ? 'V' : '',
+  }));
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Sample-recovery';
+  const ws = wb.addWorksheet('畫面總覽', { views:[{state:'frozen', xSplit:2, ySplit:1}] });
+  ws.columns = [
+    { header:'編號',   key:'cisid',      width:15 },
+    { header:'姓名',   key:'name',       width:11 },
+    { header:'身分證', key:'idno',       width:13 },
+    { header:'手機1',  key:'tel1',       width:13 },
+    { header:'手機2',  key:'tel2',       width:13 },
+    { header:'腸檢體', key:'fobtSpec',   width:9 },
+    { header:'胃檢體', key:'gasSpec',    width:9 },
+    { header:'腸送管', key:'fobtSend',   width:9 },
+    { header:'胃送管', key:'gasSend',    width:9 },
+    { header:'腸報告', key:'fobtReport', width:15 },
+    { header:'胃報告', key:'gasReport',  width:12 },
+    { header:'待轉介', key:'referral',   width:8 },
+    { header:'未腸鏡', key:'missed',     width:8 },
+    { header:'取消',   key:'cancel',     width:6 },
+  ];
+  for(const r of rows) ws.addRow(r);
+
+  const HEADER_FILL   = { type:'pattern', pattern:'solid', fgColor:{argb:'FF4A5563'} };
+  const HEADER_FONT   = { bold:true, color:{argb:'FFFFFFFF'}, size:11 };
+  const HEADER_ALIGN  = { vertical:'middle', horizontal:'center' };
+  const HEADER_BORDER = { top:{style:'thin',color:{argb:'FFAAAAAA'}}, bottom:{style:'thin',color:{argb:'FFAAAAAA'}}, left:{style:'thin',color:{argb:'FFAAAAAA'}}, right:{style:'thin',color:{argb:'FFAAAAAA'}} };
+  const DATA_BORDER   = { top:{style:'thin',color:{argb:'FFEAEAEA'}}, bottom:{style:'thin',color:{argb:'FFEAEAEA'}}, left:{style:'thin',color:{argb:'FFEAEAEA'}}, right:{style:'thin',color:{argb:'FFEAEAEA'}} };
+
+  const hr = ws.getRow(1);
+  hr.height = 24;
+  hr.eachCell({includeEmpty:false}, cell => {
+    cell.font = HEADER_FONT; cell.fill = HEADER_FILL;
+    cell.alignment = HEADER_ALIGN; cell.border = HEADER_BORDER;
+  });
+  for(let r=2; r<=ws.rowCount; r++){
+    const row = ws.getRow(r);
+    row.height = 18;
+    row.eachCell({includeEmpty:true}, cell => {
+      cell.border = DATA_BORDER;
+      cell.alignment = { vertical:'middle' };
+    });
+    // 檢體欄 col 6 (腸) / 7 (胃)
+    for(const ci of [6,7]){
+      const cc = row.getCell(ci);
+      const cv = String(cc.value||'');
+      if(cv === '已回收'){ cc.font = { color:{argb:'FF137333'}, bold:true }; cc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE6F4EA'} }; }
+      else if(cv === '退掛'){ cc.font = { color:{argb:'FFB06000'} }; cc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFEEED4'} }; }
+      else if(cv === '未篩檢'){ cc.font = { color:{argb:'FF999999'} }; }
+      cc.alignment = { vertical:'middle', horizontal:'center' };
+    }
+    // 報告欄 col 10 (腸) / 11 (胃)
+    for(const ci of [10,11]){
+      const rc = row.getCell(ci);
+      const rv = String(rc.value||'');
+      if(/陽性/.test(rv)){ rc.font = { color:{argb:'FFC5221F'}, bold:true }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFCE8E6'} }; }
+      else if(/陰性/.test(rv)){ rc.font = { color:{argb:'FF1A5390'} }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE8F0FE'} }; }
+    }
+    // V 標記欄 col 12/13/14 置中
+    for(const ci of [12,13,14]){
+      row.getCell(ci).alignment = { vertical:'middle', horizontal:'center' };
+    }
+  }
+  ws.autoFilter = { from:{row:1,column:1}, to:{row:ws.rowCount,column:14} };
+  // 整張 sheet 鎖定，避免使用者誤改（無密碼，仍可解鎖）
+  await ws.protect('', { selectLockedCells:true, selectUnlockedCells:true, autoFilter:true });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `畫面檔_${State.session.date}.xlsx`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`已匯出 ${rows.length} 人 (畫面檔，僅供檢視)`,'ok');
 }
 
 /* ── 匯出陽性清單 xlsx：腸/胃皆陽性個案，含聯絡資訊方便追蹤 ── */

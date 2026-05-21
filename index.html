@@ -870,7 +870,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.37';
+const APP_VERSION = 'v0.3.38';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2337,6 +2337,24 @@ async function exportCasesXlsx(){
       tel1:  String(r.tel1||'').trim(),
       tel2:  String(r.cellular||r.tel2||'').trim(),
     })).filter(p => p.idno || p.cisid);
+    // 把這次拖入的衛生所查詢補寫進「行醫掛號{date}」sheet，下次匯出免拖檔
+    const rosterPayload = baseList.map(r => ({
+      cisid: String(r.id93||'').trim(),
+      name:  String(r.name||'').trim(),
+      idno:  String(r.idno||'').trim(),
+      tel1:  String(r.tel1||'').trim(),
+      tel2:  String(r.cellular||r.tel2||'').trim(),
+      age:   String(r.AGE||'').trim(),
+    })).filter(p => p.cisid || p.idno);
+    if(rosterPayload.length){
+      fetch('/api/save_roster', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date: State.session.date, roster: rosterPayload}),
+      }).then(r=>r.json()).then(j=>{
+        if(j.ok) toast(`掛號名冊已存入 (${j.rosterRows} 筆)，下次匯出免拖檔`,'ok');
+        else toast('寫入名冊失敗:'+(j.error||''),'warn');
+      }).catch(e=>toast('寫入名冊失敗:'+e.message,'warn'));
+    }
   }
 
   const fobtRpt = s => {

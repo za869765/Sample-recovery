@@ -805,7 +805,7 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 11 v-3 M5 11 v-6 M8 11 v-4 M11 11 v-8 M1 12 h11" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>
         每日圖表
       </button>
-      <button class="rs-btn is-sm" id="btn-import-report" data-tip="上傳檢驗報告 xls 自動填回報告狀態（v0.3 待規格）">
+      <button class="rs-btn is-sm" id="btn-import-report" data-tip="上傳檢驗報告 xls/csv，依身分證或編號比對自動寫回報告欄">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 -3 l3 3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         匯入報告
       </button>
@@ -870,7 +870,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.31';
+const APP_VERSION = 'v0.3.32';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1864,6 +1864,7 @@ async function updateField(cisid, kind, updates){
    ═══════════════════════════════════════════════════════════════════ */
 document.getElementById('btn-open-new').onclick = openUpload;
 document.getElementById('btn-export-chart').onclick = exportChartPNG;
+document.getElementById('btn-export-cases').onclick = exportCasesXlsx;
 document.getElementById('btn-open-existing').onclick = loadHome;
 document.getElementById('btn-home').onclick = loadHome;
 document.getElementById('btn-upload-back').onclick = loadHome;
@@ -2244,6 +2245,37 @@ function exportSmsCsv(){
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   toast(missing ? `已下載 ${rows.length} 筆（${missing} 人無手機，仍列姓名+編號）` : `已下載 ${rows.length} 筆`, 'ok');
+}
+
+/* ── 匯出當前場次 xlsx：兩 sheet (腸篩/胃篩)，欄位對齊試算表 A~L（編號移到第 1 欄方便閱讀） ── */
+function exportCasesXlsx(){
+  if(!State.session){ toast('未開啟場次','warn'); return; }
+  const fobt = State.session.cases.fobt||[];
+  const gastric = State.session.cases.gastric||[];
+  if(!fobt.length && !gastric.length){ toast('無資料可匯出','warn'); return; }
+  const headers = ['編號','姓名','身分證','手機1','手機2','檢體','報告','待轉介','未腸鏡','發管日','送管日','退掛'];
+  const toRow = c => [
+    c.cisid||'', c.name||'', c.idno||'', c.tel1||'', c.tel2||'',
+    c.status==='V' ? '已回收' : (c.status||''),
+    c.report||'',
+    c.referral?'V':'', c.missed?'V':'',
+    c.dispatch||'', c.sendDate||'',
+    c.cancel?'V':'',
+  ];
+  const wb = XLSX.utils.book_new();
+  const colW = [{wch:14},{wch:10},{wch:12},{wch:12},{wch:12},{wch:8},{wch:10},{wch:8},{wch:8},{wch:10},{wch:10},{wch:6}];
+  if(fobt.length){
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...fobt.map(toRow)]);
+    ws['!cols']=colW;
+    XLSX.utils.book_append_sheet(wb, ws, '腸篩');
+  }
+  if(gastric.length){
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...gastric.map(toRow)]);
+    ws['!cols']=colW;
+    XLSX.utils.book_append_sheet(wb, ws, '胃篩');
+  }
+  XLSX.writeFile(wb, `場次_${State.session.date}_cases.xlsx`);
+  toast(`已匯出 腸 ${fobt.length} / 胃 ${gastric.length} 筆`,'ok');
 }
 
 function escapeHTML(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -3247,14 +3279,107 @@ function openWithdrawDialog(){
   refresh();
 }
 
-document.getElementById('btn-import-report').onclick = async ()=>{
-  await dialog(
-    `<h3>匯入檢驗報告</h3>
-     <p>此功能 v0.3 上線。屆時可拖入檢驗單位給的報告 xls，系統依身分證/編號自動填回對應個案的「報告狀態」（正常/異常）、判斷是否需轉介。</p>
-     <p style="color:var(--ink-mute);font-size:12px">需要先取得實際報告 xls 規格才能實作對應邏輯。</p>`,
-    [{label:'知道了', primary:true}]
-  );
-};
+/* ── 匯入檢驗報告：拖入 xls/xlsx → 自動偵測身分證/編號/報告欄 → 預覽 → 批次寫 F 欄 ── */
+async function importReport(){
+  if(!State.session){ toast('請先開啟場次','warn'); return; }
+  const input = document.createElement('input');
+  input.type='file'; input.accept='.xls,.xlsx,.csv';
+  input.onchange = async ()=>{
+    const file = input.files?.[0]; if(!file) return;
+    try{
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, {type:'array', cellDates:false, cellNF:false});
+      const sh = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sh, {defval:'', raw:false});
+      if(!rows.length){ toast('檔案沒有資料','bad'); return; }
+      const cols = Object.keys(rows[0]);
+      const findCol = (...keys) => cols.find(c => keys.some(k => String(c).toLowerCase().includes(k.toLowerCase())));
+      const idCol  = findCol('身分證','身份證','idno','id_no');
+      const cisCol = findCol('cisid','編號','掛號','序號');
+      const repCol = findCol('報告','結果','判讀','異常','陽性','陰性','正常');
+      if((!idCol && !cisCol) || !repCol){
+        return dialog(
+          `<h3>無法匯入</h3>
+           <p>找不到必要欄位（需要「身分證或編號」與「報告/結果/判讀」）。檔案欄位：</p>
+           <pre style="background:#f5f5f5;padding:8px;font-size:12px;max-height:200px;overflow:auto;white-space:pre-wrap">${escapeHTML(cols.join(', '))}</pre>`,
+          [{label:'關閉', primary:true}]
+        );
+      }
+      const byId = new Map(), byCis = new Map();
+      for(const p of State.session.merged){
+        if(p.idno)  byId.set(String(p.idno).trim(), p);
+        if(p.cisid) byCis.set(String(p.cisid).trim(), p);
+      }
+      const matched = [], unmatched = [];
+      for(const r of rows){
+        const report = String(r[repCol]||'').trim();
+        if(!report) continue;
+        const id  = idCol  ? String(r[idCol]||'').trim()  : '';
+        const cis = cisCol ? String(r[cisCol]||'').trim() : '';
+        const person = (id && byId.get(id)) || (cis && byCis.get(cis));
+        if(!person){ unmatched.push({id, cis, report}); continue; }
+        const kinds = [];
+        if(person.fobt) kinds.push('fobt');
+        if(person.gastric) kinds.push('gastric');
+        if(kinds.length) matched.push({person, report, kinds});
+      }
+      if(!matched.length){
+        return dialog(
+          `<h3>匯入失敗</h3>
+           <p>沒有任何一筆比對到場次中的個案。</p>
+           <p style="font-size:12px;color:#666">檔案 ${rows.length} 列，使用欄位：身分證=${escapeHTML(idCol||'—')} / 編號=${escapeHTML(cisCol||'—')} / 報告=${escapeHTML(repCol)}</p>`,
+          [{label:'關閉', primary:true}]
+        );
+      }
+      const previewRows = matched.slice(0,10).map(m=>
+        `<tr><td style="padding:4px 8px">${escapeHTML(m.person.name)}</td><td class="rs-mono" style="padding:4px 8px">${escapeHTML(m.person.cisid)}</td><td style="padding:4px 8px">${escapeHTML(m.report)}</td></tr>`
+      ).join('');
+      const ok = await dialog(
+        `<h3>匯入檢驗報告預覽</h3>
+         <p>比對到 <b>${matched.length}</b> 筆 / 共 ${rows.length} 列（未比對 ${unmatched.length}）</p>
+         <p style="font-size:12px;color:#666">欄位映射：身分證=${escapeHTML(idCol||'—')} / 編號=${escapeHTML(cisCol||'—')} / 報告=${escapeHTML(repCol)}</p>
+         <table style="width:100%;border-collapse:collapse;font-size:13px;margin:8px 0">
+           <thead><tr style="background:#f5f5f5"><th style="text-align:left;padding:4px 8px">姓名</th><th style="text-align:left;padding:4px 8px">編號</th><th style="text-align:left;padding:4px 8px">報告</th></tr></thead>
+           <tbody>${previewRows}</tbody>
+         </table>
+         ${matched.length>10?`<p style="font-size:12px;color:#666">…還有 ${matched.length-10} 筆</p>`:''}
+         <p style="color:#c33;font-size:13px">確認後將寫入「報告」欄(F)，同 cisid 兩邊都會寫。</p>`,
+        [{label:'取消'},{label:`寫入 ${matched.length} 筆`, primary:true}]
+      );
+      if(ok!==1) return;
+      const buckets = { fobt: [], gastric: [] };
+      for(const m of matched){
+        for(const kind of m.kinds){
+          buckets[kind].push({ cisid: m.person.cisid, fields: { report: m.report } });
+          if(m.person[kind]) m.person[kind].report = m.report;
+        }
+      }
+      setSync('syncing','匯入中…');
+      let writeCount = 0, errMsg = '';
+      for(const kind of ['fobt','gastric']){
+        if(!buckets[kind].length) continue;
+        try{
+          const res = await fetch('/api/batch_case', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ date: State.session.date, type: kind, updates: buckets[kind] }),
+          });
+          const j = await res.json();
+          if(!j.ok) throw new Error(j.error||'failed');
+          writeCount += j.updated||0;
+        }catch(e){ errMsg = e.message; }
+      }
+      if(errMsg){ setSync('bad','匯入失敗'); toast('匯入失敗：'+errMsg,'bad'); return; }
+      setSync('ok',`匯入 ${writeCount} 格`);
+      toast(`已匯入 ${matched.length} 筆報告`,'ok');
+      renderCases();
+    }catch(e){
+      toast('讀取檔案失敗：'+e.message,'bad');
+    }
+  };
+  input.click();
+}
+
+document.getElementById('btn-import-report').onclick = importReport;
 
 // global keyboard
 document.addEventListener('keydown',e=>{

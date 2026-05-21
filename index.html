@@ -125,6 +125,8 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 .rs-cb.is-bad.is-on{background:var(--bad);border-color:var(--bad)}
 .rs-select{height:26px;padding:0 22px 0 8px;border:1px solid transparent;background:transparent;border-radius:4px;font:inherit;font-size:12.5px;color:var(--ink-2);appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink-mute) 50%),linear-gradient(135deg,var(--ink-mute) 50%,transparent 50%);background-position:calc(100% - 12px) 12px,calc(100% - 8px) 12px;background-size:4px 4px;background-repeat:no-repeat;cursor:pointer}
 .rs-select:hover{background-color:var(--surface-alt);border-color:var(--line)}
+.rs-select.is-pos{color:var(--bad);background-color:var(--bad-soft);border-color:var(--bad);font-weight:600}
+.rs-select.is-neg{color:oklch(0.50 0.14 240);background-color:oklch(0.96 0.04 240);border-color:oklch(0.78 0.10 240)}
 
 /* ── stat strip ── */
 .rs-stats{display:flex;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden}
@@ -871,7 +873,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.39';
+const APP_VERSION = 'v0.3.40';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1581,22 +1583,24 @@ function renderCases(){
   const fH = fobtArr.filter(r=>!sub.has(r.cisid));
   const fS = fobtArr.filter(r=>sub.has(r.cisid));
   const cellOf = (arr)=>({
-    all: arr.filter(r=>!r.cancel).length,  // 排除退掛
+    all: arr.filter(r=>!r.cancel).length,
     done: arr.filter(r=>r.status==='V').length,
-    pos: arr.filter(r=>r.report==='異常').length,
-    norm: arr.filter(r=>r.report==='正常').length,
-    pend: arr.filter(r=>r.status==='V' && !r.report).length,
+    pos: arr.filter(r=>classifyReport(r.report)==='pos').length,
+    norm: arr.filter(r=>classifyReport(r.report)==='norm').length,
+    pend: arr.filter(r=>r.status==='V' && classifyReport(r.report)==='empty').length,
   });
   const fHc = cellOf(fH), fSc = cellOf(fS), gC = cellOf(gastricArr);
   const donePct = allS ? Math.round(sp.done/allS*100) : 0;
   const sCell = (title, c, color, hint)=>{
     const dp = c.all ? Math.round(c.done/c.all*100) : 0;
+    const posKind = title.includes('腸') ? 'fobt' : 'gastric';
+    const posClickable = c.pos > 0 ? ` style="cursor:pointer;text-decoration:underline dotted" data-tip="點按匯出陽性清單 xlsx" data-export-pos="${posKind}"` : '';
     return `<div class="rs-stat">
       <div class="rs-stat-label is-done" style="color:${color}">${title}</div>
       <div class="rs-stat-value">${c.done}<span class="rs-stat-total">/ ${c.all} 支</span><span class="rs-stat-pct">${dp}%</span></div>
       <div class="rs-stat-bar"><i style="width:${dp}%;background:${color}"></i></div>
       <div style="font-size:11px;color:var(--ink-mute);margin-top:3px" class="rs-mono">
-        陽性 <b style="color:var(--bad);font-weight:700">${c.pos}</b> · 正常 ${c.norm} · 待回報 ${c.pend}${hint?' · '+hint:''}
+        <span${posClickable}>陽性 <b style="color:var(--bad);font-weight:700">${c.pos}</b></span> · 正常 ${c.norm} · 待回報 ${c.pend}${hint?' · '+hint:''}
       </div>
     </div>`;
   };
@@ -1611,6 +1615,9 @@ function renderCases(){
     ${sCell('腸 · 市府補助', fSc, 'oklch(0.55 0.15 0)', sub.size===0?'<span style="color:var(--ink-faint)">尚無分類紀錄</span>':'')}
     ${sCell('胃 · 預防保健（健保）', gC, 'oklch(0.55 0.13 200)', '')}
   `;
+  document.querySelectorAll('[data-export-pos]').forEach(el => {
+    el.onclick = () => exportPositiveList(el.dataset.exportPos);
+  });
 
   // 重補耗材記錄（不寫試算表，本機 localStorage per 場次）
   const rs = State.restock || {fobt:0, gastric:0};
@@ -1683,16 +1690,31 @@ function reportSelHTML(p, kind){
   const obj = p[kind];
   if(!obj) return `<span style="color:var(--ink-faint);font-size:11.5px">—</span>`;
   const v = obj.report||'';
-  // 匯入的真實值（如 <50 / 78 / Negative / 523）會用報告翻譯顯示在 dropdown 內當前選項
   const isStandard = v==='' || v==='正常' || v==='異常';
   const annotated = !isStandard ? annotateReport(v, kind) : '';
   const extraOption = !isStandard ? `<option value="${escapeHTML(v)}" selected>${escapeHTML(annotated)}</option>` : '';
-  return `<select class="rs-select" data-fld="report" data-cisid="${p.cisid}" data-kind="${kind}" data-tip="${escapeHTML(annotated||v)}">
+  const klass = classifyReport(v);
+  const colorCls = klass==='pos' ? 'is-pos' : klass==='norm' ? 'is-neg' : '';
+  return `<select class="rs-select ${colorCls}" data-fld="report" data-cisid="${p.cisid}" data-kind="${kind}" data-tip="${escapeHTML(annotated||v)}">
     <option value=""${v===''?' selected':''}>—</option>
     <option value="正常"${v==='正常'?' selected':''}>正常</option>
     <option value="異常"${v==='異常'?' selected':''}>異常</option>
     ${extraOption}
   </select>`;
+}
+function classifyReport(r){
+  if(!r) return 'empty';
+  const s = String(r).trim();
+  if(!s) return 'empty';
+  if(s === '異常') return 'pos';
+  if(s === '正常') return 'norm';
+  if(/陽性/.test(s)) return 'pos';
+  if(/陰性/.test(s)) return 'norm';
+  if(/^pos/i.test(s)) return 'pos';
+  if(/^neg/i.test(s)) return 'norm';
+  if(/^<\s*\d+(\.\d+)?$/.test(s)) return 'norm';
+  if(/^-?\d+(\.\d+)?$/.test(s)) return parseFloat(s) <= 99 ? 'norm' : 'pos';
+  return 'empty';
 }
 function annotateReport(v, kind){
   const s = String(v||'').trim();
@@ -2483,6 +2505,86 @@ async function exportCasesXlsx(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   toast(`已匯出 腸 ${fRows.length} / 胃 ${gRows.length} 列`,'ok');
+}
+
+/* ── 匯出陽性清單 xlsx：腸/胃皆陽性個案，含聯絡資訊方便追蹤 ── */
+async function exportPositiveList(kind){
+  if(!State.session){ toast('未開啟場次','warn'); return; }
+  const merged = State.session.merged || [];
+  const rows = [];
+  for(const p of merged){
+    const fobtPos = p.fobt && classifyReport(p.fobt.report)==='pos';
+    const gasPos  = p.gastric && classifyReport(p.gastric.report)==='pos';
+    const wantFobt = kind ? kind==='fobt' : true;
+    const wantGas  = kind ? kind==='gastric' : true;
+    if(!(wantFobt && fobtPos) && !(wantGas && gasPos)) continue;
+    rows.push({
+      cisid: p.cisid||'',
+      name:  p.name||'',
+      idno:  p.idno||'',
+      tel1:  p.tel1||'',
+      tel2:  p.tel2||'',
+      kindStr: [wantFobt&&fobtPos?'腸':'', wantGas&&gasPos?'胃':''].filter(Boolean).join('+'),
+      fobtRpt: (wantFobt && fobtPos) ? annotateReport(p.fobt.report,'fobt') : '',
+      gasRpt:  (wantGas  && gasPos)  ? annotateReport(p.gastric.report,'gastric') : '',
+    });
+  }
+  if(!rows.length){ toast('無陽性個案','warn'); return; }
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Sample-recovery';
+  const ws = wb.addWorksheet('陽性清單', { views:[{state:'frozen', ySplit:1}] });
+  ws.columns = [
+    { header:'編號',   key:'cisid',   width:15 },
+    { header:'姓名',   key:'name',    width:11 },
+    { header:'身分證', key:'idno',    width:13 },
+    { header:'手機1',  key:'tel1',    width:13 },
+    { header:'手機2',  key:'tel2',    width:13 },
+    { header:'類別',   key:'kindStr', width:8 },
+    { header:'腸報告', key:'fobtRpt', width:15 },
+    { header:'胃報告', key:'gasRpt',  width:12 },
+  ];
+  for(const r of rows) ws.addRow(r);
+
+  const HEADER_FILL   = { type:'pattern', pattern:'solid', fgColor:{argb:'FFC5221F'} };
+  const HEADER_FONT   = { bold:true, color:{argb:'FFFFFFFF'}, size:11 };
+  const HEADER_ALIGN  = { vertical:'middle', horizontal:'center' };
+  const HEADER_BORDER = { top:{style:'thin',color:{argb:'FFAAAAAA'}}, bottom:{style:'thin',color:{argb:'FFAAAAAA'}}, left:{style:'thin',color:{argb:'FFAAAAAA'}}, right:{style:'thin',color:{argb:'FFAAAAAA'}} };
+  const DATA_BORDER   = { top:{style:'thin',color:{argb:'FFEAEAEA'}}, bottom:{style:'thin',color:{argb:'FFEAEAEA'}}, left:{style:'thin',color:{argb:'FFEAEAEA'}}, right:{style:'thin',color:{argb:'FFEAEAEA'}} };
+  const hr = ws.getRow(1);
+  hr.height = 24;
+  hr.eachCell({includeEmpty:false}, cell => {
+    cell.font = HEADER_FONT; cell.fill = HEADER_FILL;
+    cell.alignment = HEADER_ALIGN; cell.border = HEADER_BORDER;
+  });
+  for(let r=2; r<=ws.rowCount; r++){
+    const row = ws.getRow(r);
+    row.height = 18;
+    row.eachCell({includeEmpty:true}, cell => {
+      cell.border = DATA_BORDER;
+      cell.alignment = { vertical:'middle' };
+    });
+    // 報告欄 (col 7, 8) 陽性紅字
+    for(const ci of [7,8]){
+      const cc = row.getCell(ci);
+      const cv = String(cc.value||'');
+      if(/陽性/.test(cv)){
+        cc.font = { color:{argb:'FFC5221F'}, bold:true };
+        cc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFCE8E6'} };
+      }
+    }
+  }
+  ws.autoFilter = { from:{row:1,column:1}, to:{row:ws.rowCount,column:8} };
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const tag = kind==='fobt' ? '腸' : kind==='gastric' ? '胃' : '全';
+  a.href = url; a.download = `陽性清單_${tag}_${State.session.date}.xlsx`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`已匯出 ${rows.length} 筆陽性個案`,'ok');
 }
 
 function escapeHTML(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }

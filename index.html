@@ -878,7 +878,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.44';
+const APP_VERSION = 'v0.3.45';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1460,10 +1460,17 @@ async function openSession(date){
   State.recovStore = loadRecovStore(date);
   State.restock = loadRestock(date);
   State.subsidy = loadSubsidy(date);
-  // fetch both tabs
-  await Promise.all([loadSessionData('fobt'), loadSessionData('gastric')]);
+  // fetch both tabs + roster (掛號名冊，供報告檔/匯出共用，免每次重打 API)
+  await Promise.all([loadSessionData('fobt'), loadSessionData('gastric'), loadRoster()]);
   buildMerged();
   renderCases();
+}
+async function loadRoster(){
+  try{
+    const r = await fetch(`/api/roster?date=${encodeURIComponent(State.session.date)}`);
+    const j = await r.json();
+    if(j.ok && Array.isArray(j.roster)) State.session.roster = j.roster;
+  }catch{ /* 舊場次沒 roster sheet 是常態，匯出時會 fallback 拖檔 */ }
 }
 async function loadSessionData(tab){
   setSync('syncing','讀取 '+tab);
@@ -2317,21 +2324,26 @@ function exportSmsCsv(){
 async function exportCasesXlsx(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
   let base = null;
-  try{
-    setSync('syncing','讀掛號名冊…');
-    const r = await fetch(`/api/roster?date=${encodeURIComponent(State.session.date)}`);
-    const j = await r.json();
-    if(j.ok && Array.isArray(j.roster) && j.roster.length){
-      base = j.roster.map(p => ({
-        cisid: String(p.cisid||'').trim(),
-        name:  String(p.name||'').trim(),
-        idno:  String(p.idno||'').trim(),
-        tel1:  String(p.tel1||'').trim(),
-        tel2:  String(p.tel2||'').trim(),
-      })).filter(p => p.idno || p.cisid);
-    }
-    setSync('ok','');
-  }catch{ setSync('idle',''); }
+  let rosterRaw = State.session.roster;
+  if(!Array.isArray(rosterRaw)){
+    try{
+      setSync('syncing','讀掛號名冊…');
+      const r = await fetch(`/api/roster?date=${encodeURIComponent(State.session.date)}`);
+      const j = await r.json();
+      rosterRaw = (j.ok && Array.isArray(j.roster)) ? j.roster : [];
+      State.session.roster = rosterRaw;
+      setSync('ok','');
+    }catch{ setSync('idle',''); rosterRaw = []; }
+  }
+  if(rosterRaw.length){
+    base = rosterRaw.map(p => ({
+      cisid: String(p.cisid||'').trim(),
+      name:  String(p.name||'').trim(),
+      idno:  String(p.idno||'').trim(),
+      tel1:  String(p.tel1||'').trim(),
+      tel2:  String(p.tel2||'').trim(),
+    })).filter(p => p.idno || p.cisid);
+  }
 
   if(!base){
     const proceed = await dialog(
@@ -2373,11 +2385,13 @@ async function exportCasesXlsx(){
       age:   String(r.AGE||'').trim(),
     })).filter(p => p.cisid || p.idno);
     if(rosterPayload.length){
+      // 同步 State.session.roster 讓本場後續匯出立刻可用
+      State.session.roster = rosterPayload;
       fetch('/api/save_roster', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({date: State.session.date, roster: rosterPayload}),
       }).then(r=>r.json()).then(j=>{
-        if(j.ok) toast(`掛號名冊已存入 (${j.rosterRows} 筆)，下次匯出免拖檔`,'ok');
+        if(j.ok) toast(`掛號名冊已存入 (${j.rosterRows} 筆)，往後免拖檔`,'ok');
       }).catch(()=>{});
     }
   }
@@ -2517,21 +2531,27 @@ async function exportCasesXlsx(){
 async function exportOverview(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
   let base = null;
-  try{
-    setSync('syncing','讀掛號名冊…');
-    const r = await fetch(`/api/roster?date=${encodeURIComponent(State.session.date)}`);
-    const j = await r.json();
-    if(j.ok && Array.isArray(j.roster) && j.roster.length){
-      base = j.roster.map(p => ({
-        cisid: String(p.cisid||'').trim(),
-        name:  String(p.name||'').trim(),
-        idno:  String(p.idno||'').trim(),
-        tel1:  String(p.tel1||'').trim(),
-        tel2:  String(p.tel2||'').trim(),
-      })).filter(p => p.idno || p.cisid);
-    }
-    setSync('ok','');
-  }catch{ setSync('idle',''); }
+  // 優先用 openSession 時載入的 roster cache，沒有再打 API
+  let rosterRaw = State.session.roster;
+  if(!Array.isArray(rosterRaw)){
+    try{
+      setSync('syncing','讀掛號名冊…');
+      const r = await fetch(`/api/roster?date=${encodeURIComponent(State.session.date)}`);
+      const j = await r.json();
+      rosterRaw = (j.ok && Array.isArray(j.roster)) ? j.roster : [];
+      State.session.roster = rosterRaw;
+      setSync('ok','');
+    }catch{ setSync('idle',''); rosterRaw = []; }
+  }
+  if(rosterRaw.length){
+    base = rosterRaw.map(p => ({
+      cisid: String(p.cisid||'').trim(),
+      name:  String(p.name||'').trim(),
+      idno:  String(p.idno||'').trim(),
+      tel1:  String(p.tel1||'').trim(),
+      tel2:  String(p.tel2||'').trim(),
+    })).filter(p => p.idno || p.cisid);
+  }
 
   if(!base){
     const proceed = await dialog(
@@ -2573,11 +2593,13 @@ async function exportOverview(){
       age:   String(r.AGE||'').trim(),
     })).filter(p => p.cisid || p.idno);
     if(rosterPayload.length){
+      // 同步 State.session.roster 讓本場後續匯出立刻可用
+      State.session.roster = rosterPayload;
       fetch('/api/save_roster', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({date: State.session.date, roster: rosterPayload}),
       }).then(r=>r.json()).then(j=>{
-        if(j.ok) toast(`掛號名冊已存入 (${j.rosterRows} 筆)，下次匯出免拖檔`,'ok');
+        if(j.ok) toast(`掛號名冊已存入 (${j.rosterRows} 筆)，往後免拖檔`,'ok');
       }).catch(()=>{});
     }
   }

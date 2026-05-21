@@ -878,7 +878,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.41';
+const APP_VERSION = 'v0.3.42';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2513,34 +2513,115 @@ async function exportCasesXlsx(){
   toast(`已匯出 腸 ${fRows.length} / 胃 ${gRows.length} 列`,'ok');
 }
 
-/* ── 匯出畫面檔 xlsx：每人一列，腸+胃並列，顏色標記（陽性紅/陰性藍/已回收綠/未篩檢灰）── */
+/* ── 匯出畫面檔 xlsx：以衛生所查詢為基底+未做標未篩檢，每人一列腸+胃並列+顏色標記+sheet 保護 ── */
 async function exportOverview(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
+  // 先試從 API 拿 roster (跟 exportCasesXlsx 同邏輯)
+  let base = null;
+  try{
+    setSync('syncing','讀掛號名冊…');
+    const r = await fetch(`/api/roster?date=${encodeURIComponent(State.session.date)}`);
+    const j = await r.json();
+    if(j.ok && Array.isArray(j.roster) && j.roster.length){
+      base = j.roster.map(p => ({
+        cisid: String(p.cisid||'').trim(),
+        name:  String(p.name||'').trim(),
+        idno:  String(p.idno||'').trim(),
+        tel1:  String(p.tel1||'').trim(),
+        tel2:  String(p.tel2||'').trim(),
+      })).filter(p => p.idno || p.cisid);
+    }
+    setSync('ok','');
+  }catch{ setSync('idle',''); }
+
+  if(!base){
+    const proceed = await dialog(
+      `<h3>匯出畫面檔</h3>
+       <p>此場次未存掛號名冊（舊版場次），請拖入 <b>衛生所查詢.xls</b>。</p>
+       <p style="font-size:12px;color:#666">新開的場次會自動記住名冊，下次匯出免拖檔。</p>`,
+      [{label:'取消'},{label:'選檔', primary:true}]
+    );
+    if(proceed!==1) return;
+    const baseList = await new Promise(resolve => {
+      const input = document.createElement('input');
+      input.type='file'; input.accept='.xls,.xlsx';
+      input.onchange = async ()=>{
+        const file = input.files?.[0];
+        if(!file){ resolve(null); return; }
+        try{
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, {type:'array', cellDates:false, cellNF:false});
+          const sh = wb.Sheets[wb.SheetNames[0]];
+          resolve(XLSX.utils.sheet_to_json(sh, {defval:'', raw:false}));
+        }catch(e){ toast('讀取衛生所查詢失敗:'+e.message,'bad'); resolve(null); }
+      };
+      input.click();
+    });
+    if(!baseList || !baseList.length){ toast('未選擇衛生所查詢檔','warn'); return; }
+    base = baseList.map(r => ({
+      cisid: String(r.id93||'').trim(),
+      name:  String(r.name||'').trim(),
+      idno:  String(r.idno||'').trim(),
+      tel1:  String(r.tel1||'').trim(),
+      tel2:  String(r.cellular||r.tel2||'').trim(),
+    })).filter(p => p.idno || p.cisid);
+    const rosterPayload = baseList.map(r => ({
+      cisid: String(r.id93||'').trim(),
+      name:  String(r.name||'').trim(),
+      idno:  String(r.idno||'').trim(),
+      tel1:  String(r.tel1||'').trim(),
+      tel2:  String(r.cellular||r.tel2||'').trim(),
+      age:   String(r.AGE||'').trim(),
+    })).filter(p => p.cisid || p.idno);
+    if(rosterPayload.length){
+      fetch('/api/save_roster', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date: State.session.date, roster: rosterPayload}),
+      }).then(r=>r.json()).then(j=>{
+        if(j.ok) toast(`掛號名冊已存入 (${j.rosterRows} 筆)，下次匯出免拖檔`,'ok');
+      }).catch(()=>{});
+    }
+  }
+
   const merged = State.session.merged || [];
-  if(!merged.length){ toast('無資料可匯出','warn'); return; }
+  const byIdno  = new Map(merged.filter(p=>p.idno).map(p=>[p.idno, p]));
+  const byCisid = new Map(merged.filter(p=>p.cisid).map(p=>[p.cisid, p]));
+  const used = new Set();
 
   const specOf = c => {
-    if(!c) return '—';
+    if(!c) return '未篩檢';
     if(c.cancel) return '退掛';
     if(c.status==='V') return '已回收';
     return '未篩檢';
   };
-  const rows = merged.map(p => ({
-    cisid: p.cisid||'',
-    name:  p.name||'',
-    idno:  p.idno||'',
-    tel1:  p.tel1||'',
-    tel2:  p.tel2||'',
-    fobtSpec: specOf(p.fobt),
-    gasSpec:  specOf(p.gastric),
-    fobtSend: p.fobt?.sendDate || '',
-    gasSend:  p.gastric?.sendDate || '',
-    fobtReport: p.fobt ? annotateReport(p.fobt.report,'fobt') : '',
-    gasReport:  p.gastric ? annotateReport(p.gastric.report,'gastric') : '',
-    referral: (p.fobt?.referral || p.gastric?.referral) ? 'V' : '',
-    missed:   (p.fobt?.missed   || p.gastric?.missed)   ? 'V' : '',
-    cancel:   ((!p.fobt || p.fobt.cancel) && (!p.gastric || p.gastric.cancel)) ? 'V' : '',
-  }));
+  const rowOf = (b, p) => ({
+    cisid: (p&&p.cisid) || (b&&b.cisid) || '',
+    name:  (p&&p.name)  || (b&&b.name)  || '',
+    idno:  (p&&p.idno)  || (b&&b.idno)  || '',
+    tel1:  (p&&p.tel1)  || (b&&b.tel1)  || '',
+    tel2:  (p&&p.tel2)  || (b&&b.tel2)  || '',
+    fobtSpec: specOf(p && p.fobt),
+    gasSpec:  specOf(p && p.gastric),
+    fobtSend: (p && p.fobt && p.fobt.sendDate) || '',
+    gasSend:  (p && p.gastric && p.gastric.sendDate) || '',
+    fobtReport: (p && p.fobt) ? annotateReport(p.fobt.report,'fobt') : '',
+    gasReport:  (p && p.gastric) ? annotateReport(p.gastric.report,'gastric') : '',
+    referral: (p && ((p.fobt&&p.fobt.referral) || (p.gastric&&p.gastric.referral))) ? 'V' : '',
+    missed:   (p && ((p.fobt&&p.fobt.missed)   || (p.gastric&&p.gastric.missed)))   ? 'V' : '',
+    cancel:   p && ((!p.fobt || p.fobt.cancel) && (!p.gastric || p.gastric.cancel)) ? 'V' : '',
+  });
+
+  const rows = [];
+  for(const b of base){
+    const p = (b.idno && byIdno.get(b.idno)) || (b.cisid && byCisid.get(b.cisid)) || null;
+    if(p) used.add(p.cisid);
+    rows.push(rowOf(b, p));
+  }
+  for(const p of merged){
+    if(used.has(p.cisid)) continue;
+    rows.push(rowOf(null, p));
+  }
+  if(!rows.length){ toast('無資料可匯出','warn'); return; }
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sample-recovery';
@@ -2582,7 +2663,6 @@ async function exportOverview(){
       cell.border = DATA_BORDER;
       cell.alignment = { vertical:'middle' };
     });
-    // 檢體欄 col 6 (腸) / 7 (胃)
     for(const ci of [6,7]){
       const cc = row.getCell(ci);
       const cv = String(cc.value||'');
@@ -2591,20 +2671,17 @@ async function exportOverview(){
       else if(cv === '未篩檢'){ cc.font = { color:{argb:'FF999999'} }; }
       cc.alignment = { vertical:'middle', horizontal:'center' };
     }
-    // 報告欄 col 10 (腸) / 11 (胃)
     for(const ci of [10,11]){
       const rc = row.getCell(ci);
       const rv = String(rc.value||'');
       if(/陽性/.test(rv)){ rc.font = { color:{argb:'FFC5221F'}, bold:true }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFCE8E6'} }; }
       else if(/陰性/.test(rv)){ rc.font = { color:{argb:'FF1A5390'} }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE8F0FE'} }; }
     }
-    // V 標記欄 col 12/13/14 置中
     for(const ci of [12,13,14]){
       row.getCell(ci).alignment = { vertical:'middle', horizontal:'center' };
     }
   }
   ws.autoFilter = { from:{row:1,column:1}, to:{row:ws.rowCount,column:14} };
-  // 整張 sheet 鎖定，避免使用者誤改（無密碼，仍可解鎖）
   await ws.protect('', { selectLockedCells:true, selectUnlockedCells:true, autoFilter:true });
 
   const buf = await wb.xlsx.writeBuffer();
@@ -2614,7 +2691,7 @@ async function exportOverview(){
   a.href = url; a.download = `畫面檔_${State.session.date}.xlsx`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast(`已匯出 ${rows.length} 人 (畫面檔，僅供檢視)`,'ok');
+  toast(`已匯出 ${rows.length} 人 (含衛生所未篩檢)`,'ok');
 }
 
 /* ── 匯出陽性清單 xlsx：腸/胃皆陽性個案，含聯絡資訊方便追蹤 ── */

@@ -3,7 +3,8 @@
 
 export const HEADER = ['姓名','身分證字號','手機1','手機2','檢體狀態','報告狀態','待轉介','轉介未做腸鏡','發管日','送管日','取消追蹤','編號'];
 export const ROSTER_HEADER = ['姓名','身分證字號','手機1','手機2','年齡','編號'];
-export const TAB_PREFIX = { fobt:'行醫腸篩', gastric:'行醫胃篩', roster:'行醫掛號' };
+export const GROUPS_HEADER = ['姓名','起','迄'];
+export const TAB_PREFIX = { fobt:'行醫腸篩', gastric:'行醫胃篩', roster:'行醫掛號', groups:'行醫分組' };
 
 export function getSheetId(env){
   const id = (env.GOOGLE_SHEET_ID || '').trim().replace(/^﻿/, '');
@@ -108,6 +109,19 @@ export async function readRoster(sheetId, title, token){
   const range = `${encodeURIComponent(title)}!A2:F`;
   const r = await sheetsAPI(`/${sheetId}/values/${range}`, 'GET', null, token);
   return (r.values || []).map(rowToRoster);
+}
+
+export function groupToRow(g){
+  return [g.name||'', String(g.from||''), String(g.to||'')];
+}
+export function rowToGroup(row){
+  const v = i => (row[i]==null ? '' : String(row[i]));
+  return { name: v(0), from: parseInt(v(1),10)||0, to: parseInt(v(2),10)||0 };
+}
+export async function readGroups(sheetId, title, token){
+  const range = `${encodeURIComponent(title)}!A2:C`;
+  const r = await sheetsAPI(`/${sheetId}/values/${range}`, 'GET', null, token);
+  return (r.values || []).map(rowToGroup).filter(g => g.name && g.from>=0 && g.to>=g.from);
 }
 
 export async function readTab(sheetId, title, token){

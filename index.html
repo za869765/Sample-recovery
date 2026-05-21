@@ -475,6 +475,7 @@ body.readonly #btn-withdraw,
 body.readonly #btn-import-report,
 body.readonly #btn-export-cases,
 body.readonly #btn-export-overview,
+body.readonly #btn-groups,
 body.readonly #restock-strip,
 body.readonly #btn-open-new,
 body.readonly .rs-hints{display:none !important}
@@ -817,9 +818,13 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 3 l3 -3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         匯出
       </button>
-      <button class="rs-btn is-sm" id="btn-export-overview" data-tip="匯出報告檔：以衛生所名單為基底，每人一列同時顯示腸+胃報告，含顏色標記">
+      <button class="rs-btn is-sm" id="btn-export-overview" data-tip="匯出報告檔：以衛生所名單為基底，依轉介分組+顏色標記">
         <svg width="13" height="13" viewBox="0 0 13 13"><rect x="1.5" y="2" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M1.5 5 h10 M6.5 5 v6" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
         報告檔
+      </button>
+      <button class="rs-btn is-sm" id="btn-groups" data-tip="設定異常轉介分組：護理師姓名與負責編號區間，存雲端 (每場獨立)">
+        <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="4" cy="5" r="1.6" stroke="currentColor" stroke-width="1.1" fill="none"/><circle cx="9" cy="5" r="1.6" stroke="currentColor" stroke-width="1.1" fill="none"/><path d="M1.5 11 q0 -2 2.5 -2 q2.5 0 2.5 2 M6.5 11 q0 -2 2.5 -2 q2.5 0 2.5 2" stroke="currentColor" stroke-width="1.1" fill="none"/></svg>
+        分組設定
       </button>
     </div>
 
@@ -878,7 +883,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.45';
+const APP_VERSION = 'v0.3.46';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1460,8 +1465,8 @@ async function openSession(date){
   State.recovStore = loadRecovStore(date);
   State.restock = loadRestock(date);
   State.subsidy = loadSubsidy(date);
-  // fetch both tabs + roster (掛號名冊，供報告檔/匯出共用，免每次重打 API)
-  await Promise.all([loadSessionData('fobt'), loadSessionData('gastric'), loadRoster()]);
+  // fetch both tabs + roster + groups (報告檔/匯出共用，免每次重打 API)
+  await Promise.all([loadSessionData('fobt'), loadSessionData('gastric'), loadRoster(), loadGroups()]);
   buildMerged();
   renderCases();
 }
@@ -1471,6 +1476,141 @@ async function loadRoster(){
     const j = await r.json();
     if(j.ok && Array.isArray(j.roster)) State.session.roster = j.roster;
   }catch{ /* 舊場次沒 roster sheet 是常態，匯出時會 fallback 拖檔 */ }
+}
+async function loadGroups(){
+  try{
+    const r = await fetch(`/api/groups?date=${encodeURIComponent(State.session.date)}`);
+    const j = await r.json();
+    if(j.ok && Array.isArray(j.groups)) State.session.groups = j.groups;
+  }catch{ /* 沒設定就用 default */ }
+}
+const DEFAULT_GROUPS = [
+  { name:'李伽蕖', from:1,   to:47  },
+  { name:'顏詩瑋', from:48,  to:94  },
+  { name:'蔡沛汝', from:95,  to:141 },
+  { name:'蔡錦慧', from:142, to:187 },
+  { name:'陳翊瑄', from:188, to:233 },
+  { name:'侯晏筑', from:234, to:279 },
+];
+function getActiveGroups(){
+  const g = State.session && State.session.groups;
+  return (Array.isArray(g) && g.length) ? g : DEFAULT_GROUPS;
+}
+
+/* 分組設定 dialog */
+async function openGroupsDialog(){
+  if(!State.session){ toast('未開啟場次','warn'); return; }
+  const current = getActiveGroups().map(g => ({...g}));
+  // 推算本場 cisid 末 3 碼最大值，給使用者參考
+  const merged = State.session.merged || [];
+  const roster = State.session.roster || [];
+  const allCisids = [...merged.map(p=>p.cisid), ...roster.map(p=>p.cisid)];
+  let maxN = 0;
+  for(const c of allCisids){
+    const t = String(c||'').slice(-3);
+    if(/^\d{3}$/.test(t)){ const n = parseInt(t,10); if(n>maxN) maxN = n; }
+  }
+  let working = current.length ? current : [{name:'',from:1,to:maxN||1}];
+
+  function render(){
+    const rows = working.map((g,i) => `
+      <tr data-i="${i}">
+        <td style="padding:4px"><input type="text" class="rs-input" data-fld="name" value="${escapeHTML(g.name||'')}" placeholder="護理師" style="width:110px"></td>
+        <td style="padding:4px"><input type="number" class="rs-input" data-fld="from" value="${g.from||''}" min="1" max="999" style="width:70px;text-align:center"></td>
+        <td style="padding:4px;text-align:center;color:#999">—</td>
+        <td style="padding:4px"><input type="number" class="rs-input" data-fld="to" value="${g.to||''}" min="1" max="999" style="width:70px;text-align:center"></td>
+        <td style="padding:4px;text-align:center"><button class="rs-btn is-sm" data-action="del" data-i="${i}">刪</button></td>
+      </tr>`).join('');
+    document.getElementById('groups-body').innerHTML = rows;
+    bind();
+  }
+  function bind(){
+    document.querySelectorAll('#groups-body input').forEach(inp => {
+      inp.onchange = ()=>{
+        const i = parseInt(inp.closest('tr').dataset.i,10);
+        const fld = inp.dataset.fld;
+        if(fld === 'name') working[i].name = inp.value;
+        else working[i][fld] = parseInt(inp.value,10)||0;
+      };
+    });
+    document.querySelectorAll('#groups-body [data-action="del"]').forEach(b => {
+      b.onclick = ()=>{
+        const i = parseInt(b.dataset.i,10);
+        working.splice(i,1);
+        render();
+      };
+    });
+  }
+
+  const body = `
+    <h3>異常轉介分組設定</h3>
+    <p style="font-size:12px;color:#666;margin:6px 0">本場 ${State.session.date} 衛生所最大編號末 3 碼：<b>${String(maxN).padStart(3,'0')}</b>。設定後存雲端，下次開此場自動載入。</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin:6px 0">
+      <thead><tr style="background:#f5f5f5">
+        <th style="text-align:left;padding:4px 8px">護理師</th>
+        <th style="padding:4px 8px">起</th>
+        <th></th>
+        <th style="padding:4px 8px">迄</th>
+        <th style="padding:4px 8px"></th>
+      </tr></thead>
+      <tbody id="groups-body"></tbody>
+    </table>
+    <div style="display:flex;gap:6px;margin:6px 0">
+      <button class="rs-btn is-sm" id="groups-add">＋ 新增一段</button>
+      <button class="rs-btn is-sm" id="groups-fill">自動填迄=${String(maxN).padStart(3,'0')}</button>
+      <button class="rs-btn is-sm" id="groups-reset">套用預設 (6 段)</button>
+    </div>`;
+
+  const result = await new Promise(resolve => {
+    const d = document.getElementById('dialog');
+    const o = document.getElementById('overlay');
+    d.innerHTML = body + `<div class="rs-dialog-actions">
+      <button class="rs-btn" data-act="0">取消</button>
+      <button class="rs-btn is-primary" data-act="1">儲存到雲端</button>
+    </div>`;
+    o.classList.add('is-show');
+    render();
+    document.getElementById('groups-add').onclick = ()=>{
+      const last = working[working.length-1];
+      const nextFrom = last ? (last.to+1) : 1;
+      working.push({ name:'', from:nextFrom, to:Math.min(nextFrom+46, maxN||nextFrom) });
+      render();
+    };
+    document.getElementById('groups-fill').onclick = ()=>{
+      if(working.length){ working[working.length-1].to = maxN; render(); }
+    };
+    document.getElementById('groups-reset').onclick = ()=>{
+      working = DEFAULT_GROUPS.map(g => ({...g}));
+      render();
+    };
+    d.querySelectorAll('[data-act]').forEach(b => b.onclick = ()=>{
+      o.classList.remove('is-show');
+      resolve(parseInt(b.dataset.act,10));
+    });
+    o.onclick = e => { if(e.target===o){ o.classList.remove('is-show'); resolve(-1); } };
+  });
+  if(result !== 1) return;
+
+  const clean = working
+    .map(g => ({ name:String(g.name||'').trim(), from:parseInt(g.from,10)||0, to:parseInt(g.to,10)||0 }))
+    .filter(g => g.name && g.to>=g.from);
+  if(!clean.length){ toast('沒有有效分組可儲存','warn'); return; }
+
+  setSync('syncing','儲存分組設定…');
+  try{
+    const r = await fetch('/api/save_groups', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ date: State.session.date, groups: clean }),
+    });
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error||'save failed');
+    State.session.groups = clean;
+    setSync('ok','已同步');
+    toast(`分組設定已儲存 (${clean.length} 段)`,'ok');
+  }catch(e){
+    setSync('bad','儲存失敗');
+    toast('儲存失敗：'+e.message,'bad');
+  }
 }
 async function loadSessionData(tab){
   setSync('syncing','讀取 '+tab);
@@ -1932,6 +2072,7 @@ document.getElementById('btn-open-new').onclick = openUpload;
 document.getElementById('btn-export-chart').onclick = exportChartPNG;
 document.getElementById('btn-export-cases').onclick = exportCasesXlsx;
 document.getElementById('btn-export-overview').onclick = exportOverview;
+document.getElementById('btn-groups').onclick = openGroupsDialog;
 document.getElementById('btn-open-existing').onclick = loadHome;
 document.getElementById('btn-home').onclick = loadHome;
 document.getElementById('btn-upload-back').onclick = loadHome;
@@ -2641,15 +2782,8 @@ async function exportOverview(){
   }
   if(!allRows.length){ toast('無資料可匯出','warn'); return; }
 
-  // ── 異常轉介分組 (v0.3.44 hardcoded，未來改 UI 設定) ──
-  const GROUPS = [
-    { name:'李伽蕖', from:1,   to:47  },
-    { name:'顏詩瑋', from:48,  to:94  },
-    { name:'蔡沛汝', from:95,  to:141 },
-    { name:'蔡錦慧', from:142, to:187 },
-    { name:'陳翊瑄', from:188, to:233 },
-    { name:'侯晏筑', from:234, to:279 },
-  ];
+  // ── 異常轉介分組 (從 State.session.groups 拿，沒設定用 DEFAULT_GROUPS) ──
+  const GROUPS = getActiveGroups();
   const tailNum = cisid => {
     const t = String(cisid||'').slice(-3);
     return /^\d{3}$/.test(t) ? parseInt(t,10) : null;

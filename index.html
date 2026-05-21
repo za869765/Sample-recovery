@@ -2513,10 +2513,9 @@ async function exportCasesXlsx(){
   toast(`已匯出 腸 ${fRows.length} / 胃 ${gRows.length} 列`,'ok');
 }
 
-/* ── 匯出報告檔 xlsx：以衛生所查詢為基底+未做標未篩檢，每人一列腸+胃並列+顏色標記+sheet 保護 ── */
+/* ── 匯出報告檔 xlsx：以衛生所查詢為基底+依異常轉介分組+顏色標記+sheet 保護 ── */
 async function exportOverview(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
-  // 先試從 API 拿 roster (跟 exportCasesXlsx 同邏輯)
   let base = null;
   try{
     setSync('syncing','讀掛號名冊…');
@@ -2536,7 +2535,7 @@ async function exportOverview(){
 
   if(!base){
     const proceed = await dialog(
-      `<h3>匯出畫面檔</h3>
+      `<h3>匯出報告檔</h3>
        <p>此場次未存掛號名冊（舊版場次），請拖入 <b>衛生所查詢.xls</b>。</p>
        <p style="font-size:12px;color:#666">新開的場次會自動記住名冊，下次匯出免拖檔。</p>`,
       [{label:'取消'},{label:'選檔', primary:true}]
@@ -2606,26 +2605,48 @@ async function exportOverview(){
     gasSend:  (p && p.gastric && p.gastric.sendDate) || '',
     fobtReport: (p && p.fobt) ? annotateReport(p.fobt.report,'fobt') : '',
     gasReport:  (p && p.gastric) ? annotateReport(p.gastric.report,'gastric') : '',
-    referral: (p && ((p.fobt&&p.fobt.referral) || (p.gastric&&p.gastric.referral))) ? 'V' : '',
-    missed:   (p && ((p.fobt&&p.fobt.missed)   || (p.gastric&&p.gastric.missed)))   ? 'V' : '',
-    cancel:   p && ((!p.fobt || p.fobt.cancel) && (!p.gastric || p.gastric.cancel)) ? 'V' : '',
   });
 
-  const rows = [];
+  const allRows = [];
   for(const b of base){
     const p = (b.idno && byIdno.get(b.idno)) || (b.cisid && byCisid.get(b.cisid)) || null;
     if(p) used.add(p.cisid);
-    rows.push(rowOf(b, p));
+    allRows.push(rowOf(b, p));
   }
   for(const p of merged){
     if(used.has(p.cisid)) continue;
-    rows.push(rowOf(null, p));
+    allRows.push(rowOf(null, p));
   }
-  if(!rows.length){ toast('無資料可匯出','warn'); return; }
+  if(!allRows.length){ toast('無資料可匯出','warn'); return; }
 
+  // ── 異常轉介分組 (v0.3.44 hardcoded，未來改 UI 設定) ──
+  const GROUPS = [
+    { name:'李伽蕖', from:1,   to:47  },
+    { name:'顏詩瑋', from:48,  to:94  },
+    { name:'蔡沛汝', from:95,  to:141 },
+    { name:'蔡錦慧', from:142, to:187 },
+    { name:'陳翊瑄', from:188, to:233 },
+    { name:'侯晏筑', from:234, to:279 },
+  ];
+  const tailNum = cisid => {
+    const t = String(cisid||'').slice(-3);
+    return /^\d{3}$/.test(t) ? parseInt(t,10) : null;
+  };
+  const buckets = GROUPS.map(g => ({...g, rows:[]}));
+  const ungrouped = [];
+  for(const r of allRows){
+    const n = tailNum(r.cisid);
+    const g = n!=null ? buckets.find(b => n>=b.from && n<=b.to) : null;
+    if(g) g.rows.push(r);
+    else ungrouped.push(r);
+  }
+  for(const b of buckets) b.rows.sort((a,b)=>a.cisid.localeCompare(b.cisid));
+  ungrouped.sort((a,b)=>a.cisid.localeCompare(b.cisid));
+
+  // ── ExcelJS ──
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sample-recovery';
-  const ws = wb.addWorksheet('報告', { views:[{state:'frozen', xSplit:2, ySplit:1}] });
+  const ws = wb.addWorksheet('報告', { views:[{state:'frozen', ySplit:1}] });
   ws.columns = [
     { header:'編號',   key:'cisid',      width:15 },
     { header:'姓名',   key:'name',       width:11 },
@@ -2639,22 +2660,61 @@ async function exportOverview(){
     { header:'腸報告', key:'fobtReport', width:15 },
     { header:'胃報告', key:'gasReport',  width:12 },
   ];
-  for(const r of rows) ws.addRow(r);
 
   const HEADER_FILL   = { type:'pattern', pattern:'solid', fgColor:{argb:'FF4A5563'} };
   const HEADER_FONT   = { bold:true, color:{argb:'FFFFFFFF'}, size:11 };
   const HEADER_ALIGN  = { vertical:'middle', horizontal:'center' };
   const HEADER_BORDER = { top:{style:'thin',color:{argb:'FFAAAAAA'}}, bottom:{style:'thin',color:{argb:'FFAAAAAA'}}, left:{style:'thin',color:{argb:'FFAAAAAA'}}, right:{style:'thin',color:{argb:'FFAAAAAA'}} };
   const DATA_BORDER   = { top:{style:'thin',color:{argb:'FFEAEAEA'}}, bottom:{style:'thin',color:{argb:'FFEAEAEA'}}, left:{style:'thin',color:{argb:'FFEAEAEA'}}, right:{style:'thin',color:{argb:'FFEAEAEA'}} };
+  const GROUP_COLORS = ['FF5B7C99','FF7C5B99','FF99815B','FF5B997C','FF995B81','FF7C9959','FF607080'];
+  const NUM_COLS = 11;
 
+  // 主 header row 樣式
   const hr = ws.getRow(1);
   hr.height = 24;
   hr.eachCell({includeEmpty:false}, cell => {
     cell.font = HEADER_FONT; cell.fill = HEADER_FILL;
     cell.alignment = HEADER_ALIGN; cell.border = HEADER_BORDER;
   });
-  for(let r=2; r<=ws.rowCount; r++){
-    const row = ws.getRow(r);
+
+  // 寫入分組
+  const dataRowIdxs = [];
+  function addGroupHeader(text, colorHex){
+    const row = ws.addRow([text]);
+    ws.mergeCells(row.number, 1, row.number, NUM_COLS);
+    const cell = row.getCell(1);
+    cell.font = { bold:true, color:{argb:'FFFFFFFF'}, size:11 };
+    cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:colorHex} };
+    cell.alignment = { vertical:'middle', horizontal:'left', indent:1 };
+    row.height = 22;
+  }
+  let blankRow = false;
+  for(let i=0; i<buckets.length; i++){
+    const b = buckets[i];
+    if(!b.rows.length) continue;
+    if(blankRow) ws.addRow([]);
+    const posCount = b.rows.filter(r => /陽性/.test(r.fobtReport) || /陽性/.test(r.gasReport)).length;
+    const range = `${String(b.from).padStart(3,'0')}–${String(b.to).padStart(3,'0')}`;
+    addGroupHeader(`${b.name}　${range}　${b.rows.length} 人　異常 ${posCount}`, GROUP_COLORS[i % GROUP_COLORS.length]);
+    for(const r of b.rows){
+      ws.addRow(r);
+      dataRowIdxs.push(ws.rowCount);
+    }
+    blankRow = true;
+  }
+  if(ungrouped.length){
+    if(blankRow) ws.addRow([]);
+    const posCount = ungrouped.filter(r => /陽性/.test(r.fobtReport) || /陽性/.test(r.gasReport)).length;
+    addGroupHeader(`其他（衛生所外）　${ungrouped.length} 人　異常 ${posCount}`, GROUP_COLORS[6]);
+    for(const r of ungrouped){
+      ws.addRow(r);
+      dataRowIdxs.push(ws.rowCount);
+    }
+  }
+
+  // 套用 data row 樣式 (skip group header rows)
+  for(const idx of dataRowIdxs){
+    const row = ws.getRow(idx);
     row.height = 18;
     row.eachCell({includeEmpty:true}, cell => {
       cell.border = DATA_BORDER;
@@ -2675,8 +2735,7 @@ async function exportOverview(){
       else if(/陰性/.test(rv)){ rc.font = { color:{argb:'FF1A5390'} }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE8F0FE'} }; }
     }
   }
-  ws.autoFilter = { from:{row:1,column:1}, to:{row:ws.rowCount,column:11} };
-  await ws.protect('', { selectLockedCells:true, selectUnlockedCells:true, autoFilter:true });
+  await ws.protect('', { selectLockedCells:true, selectUnlockedCells:true });
 
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -2685,7 +2744,7 @@ async function exportOverview(){
   a.href = url; a.download = `報告檔_${State.session.date}.xlsx`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast(`已匯出 ${rows.length} 人報告檔`,'ok');
+  toast(`已匯出 ${allRows.length} 人報告檔 (依轉介分工分組)`,'ok');
 }
 
 /* ── 匯出陽性清單 xlsx：腸/胃皆陽性個案，含聯絡資訊方便追蹤 ── */

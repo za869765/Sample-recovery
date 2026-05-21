@@ -870,7 +870,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.33';
+const APP_VERSION = 'v0.3.34';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2354,7 +2354,7 @@ async function exportCasesXlsx(){
   const gRows = buildRows(State.session.cases.gastric||[], false);
   const wsG = XLSX.utils.aoa_to_sheet([headers, ...gRows]);
   wsG['!cols']=colW;
-  XLSX.utils.book_append_sheet(wb, wsG, '胃癌');
+  XLSX.utils.book_append_sheet(wb, wsG, '胃篩');
 
   XLSX.writeFile(wb, `場次_${State.session.date}_cases.xlsx`);
   toast(`已匯出 腸 ${fRows.length} / 胃 ${gRows.length} 列`,'ok');

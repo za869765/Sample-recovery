@@ -817,9 +817,9 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 3 l3 -3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         匯出
       </button>
-      <button class="rs-btn is-sm" id="btn-export-overview" data-tip="匯出畫面檔：每人一列同時顯示腸+胃報告，含顏色標記">
+      <button class="rs-btn is-sm" id="btn-export-overview" data-tip="匯出報告檔：以衛生所名單為基底，每人一列同時顯示腸+胃報告，含顏色標記">
         <svg width="13" height="13" viewBox="0 0 13 13"><rect x="1.5" y="2" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M1.5 5 h10 M6.5 5 v6" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
-        畫面檔
+        報告檔
       </button>
     </div>
 
@@ -878,7 +878,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.42';
+const APP_VERSION = 'v0.3.43';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2513,7 +2513,7 @@ async function exportCasesXlsx(){
   toast(`已匯出 腸 ${fRows.length} / 胃 ${gRows.length} 列`,'ok');
 }
 
-/* ── 匯出畫面檔 xlsx：以衛生所查詢為基底+未做標未篩檢，每人一列腸+胃並列+顏色標記+sheet 保護 ── */
+/* ── 匯出報告檔 xlsx：以衛生所查詢為基底+未做標未篩檢，每人一列腸+胃並列+顏色標記+sheet 保護 ── */
 async function exportOverview(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
   // 先試從 API 拿 roster (跟 exportCasesXlsx 同邏輯)
@@ -2625,7 +2625,7 @@ async function exportOverview(){
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sample-recovery';
-  const ws = wb.addWorksheet('畫面總覽', { views:[{state:'frozen', xSplit:2, ySplit:1}] });
+  const ws = wb.addWorksheet('報告', { views:[{state:'frozen', xSplit:2, ySplit:1}] });
   ws.columns = [
     { header:'編號',   key:'cisid',      width:15 },
     { header:'姓名',   key:'name',       width:11 },
@@ -2638,9 +2638,6 @@ async function exportOverview(){
     { header:'胃送管', key:'gasSend',    width:9 },
     { header:'腸報告', key:'fobtReport', width:15 },
     { header:'胃報告', key:'gasReport',  width:12 },
-    { header:'待轉介', key:'referral',   width:8 },
-    { header:'未腸鏡', key:'missed',     width:8 },
-    { header:'取消',   key:'cancel',     width:6 },
   ];
   for(const r of rows) ws.addRow(r);
 
@@ -2677,21 +2674,18 @@ async function exportOverview(){
       if(/陽性/.test(rv)){ rc.font = { color:{argb:'FFC5221F'}, bold:true }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFCE8E6'} }; }
       else if(/陰性/.test(rv)){ rc.font = { color:{argb:'FF1A5390'} }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE8F0FE'} }; }
     }
-    for(const ci of [12,13,14]){
-      row.getCell(ci).alignment = { vertical:'middle', horizontal:'center' };
-    }
   }
-  ws.autoFilter = { from:{row:1,column:1}, to:{row:ws.rowCount,column:14} };
+  ws.autoFilter = { from:{row:1,column:1}, to:{row:ws.rowCount,column:11} };
   await ws.protect('', { selectLockedCells:true, selectUnlockedCells:true, autoFilter:true });
 
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `畫面檔_${State.session.date}.xlsx`;
+  a.href = url; a.download = `報告檔_${State.session.date}.xlsx`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast(`已匯出 ${rows.length} 人 (含衛生所未篩檢)`,'ok');
+  toast(`已匯出 ${rows.length} 人報告檔`,'ok');
 }
 
 /* ── 匯出陽性清單 xlsx：腸/胃皆陽性個案，含聯絡資訊方便追蹤 ── */

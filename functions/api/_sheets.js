@@ -2,7 +2,8 @@
 // Pages Functions auto-skip files prefixed with _ so this is not an endpoint.
 
 export const HEADER = ['姓名','身分證字號','手機1','手機2','檢體狀態','報告狀態','待轉介','轉介未做腸鏡','發管日','送管日','取消追蹤','編號'];
-export const TAB_PREFIX = { fobt:'行醫腸篩', gastric:'行醫胃篩' };
+export const ROSTER_HEADER = ['姓名','身分證字號','手機1','手機2','年齡','編號'];
+export const TAB_PREFIX = { fobt:'行醫腸篩', gastric:'行醫胃篩', roster:'行醫掛號' };
 
 export function getSheetId(env){
   const id = (env.GOOGLE_SHEET_ID || '').trim().replace(/^﻿/, '');
@@ -81,18 +82,32 @@ export async function listTabs(sheetId, token){
   return meta.sheets.map(s=>s.properties.title);
 }
 
-export async function ensureTab(sheetId, title, token, existingTitles){
+export async function ensureTab(sheetId, title, token, existingTitles, headerRow){
   if (!existingTitles.has(title)){
     await sheetsAPI(`/${sheetId}:batchUpdate`, 'POST',
       {requests:[{addSheet:{properties:{title}}}]}, token);
     existingTitles.add(title);
   }
-  // ensure header row
-  const range = `${encodeURIComponent(title)}!A1:L1`;
+  const h = headerRow || HEADER;
+  const lastCol = String.fromCharCode(65 + h.length - 1);
+  const range = `${encodeURIComponent(title)}!A1:${lastCol}1`;
   const cur = await sheetsAPI(`/${sheetId}/values/${range}`, 'GET', null, token);
-  if (((cur.values||[])[0]||[]).join('|') !== HEADER.join('|')){
-    await sheetsAPI(`/${sheetId}/values/${range}?valueInputOption=RAW`, 'PUT', {values:[HEADER]}, token);
+  if (((cur.values||[])[0]||[]).join('|') !== h.join('|')){
+    await sheetsAPI(`/${sheetId}/values/${range}?valueInputOption=RAW`, 'PUT', {values:[h]}, token);
   }
+}
+
+export function rosterToRow(p){
+  return [p.name||'', p.idno||'', p.tel1||'', p.tel2||'', p.age||'', p.cisid||''];
+}
+export function rowToRoster(row){
+  const v = i => (row[i]==null ? '' : String(row[i]));
+  return { name:v(0), idno:v(1), tel1:v(2), tel2:v(3), age:v(4), cisid:v(5) };
+}
+export async function readRoster(sheetId, title, token){
+  const range = `${encodeURIComponent(title)}!A2:F`;
+  const r = await sheetsAPI(`/${sheetId}/values/${range}`, 'GET', null, token);
+  return (r.values || []).map(rowToRoster);
 }
 
 export async function readTab(sheetId, title, token){

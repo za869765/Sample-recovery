@@ -870,7 +870,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.35';
+const APP_VERSION = 'v0.3.36';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1364,10 +1364,19 @@ async function doInit(){
     tel1:  phoneNorm(r.HomeTEL1),
     tel2:  phoneNorm(r.MOBTEL1),
   }));
+  const roster = (State.files.visit?.rows || []).map(r => ({
+    cisid: String(r.id93||'').trim(),
+    name:  String(r.name||'').trim(),
+    idno:  String(r.idno||'').trim(),
+    tel1:  phoneNorm(r.tel1),
+    tel2:  phoneNorm(r.cellular || r.tel2),
+    age:   String(r.AGE||'').trim(),
+  })).filter(p => p.cisid || p.idno);
   const payload = {
     date: State.date,
     fobt: [...fobt, ...freeRows],
     gastric,
+    roster,
   };
   try{
     const r=await fetch('/api/init',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -2256,38 +2265,57 @@ function exportSmsCsv(){
 */
 async function exportCasesXlsx(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
-  const proceed = await dialog(
-    `<h3>匯出當場個案</h3>
-     <p>需要拖入 <b>衛生所查詢.xls</b>（當天 HIS export）作為基底名單。</p>
-     <p style="font-size:12px;color:#666">未做篩檢的人會標示「未篩檢」；衛生所外的單獨胃篩（1A03/1H01 等）會在胃癌 sheet 額外添加。</p>`,
-    [{label:'取消'},{label:'選檔', primary:true}]
-  );
-  if(proceed!==1) return;
+  // 先試從 API 拿 roster (新場次 v0.3.36+ 開場次時已存)
+  let base = null;
+  try{
+    setSync('syncing','讀掛號名冊…');
+    const r = await fetch(`/api/roster?date=${encodeURIComponent(State.session.date)}`);
+    const j = await r.json();
+    if(j.ok && Array.isArray(j.roster) && j.roster.length){
+      base = j.roster.map(p => ({
+        cisid: String(p.cisid||'').trim(),
+        name:  String(p.name||'').trim(),
+        idno:  String(p.idno||'').trim(),
+        tel1:  String(p.tel1||'').trim(),
+        tel2:  String(p.tel2||'').trim(),
+      })).filter(p => p.idno || p.cisid);
+    }
+    setSync('ok','');
+  }catch{ setSync('idle',''); }
 
-  const baseList = await new Promise(resolve => {
-    const input = document.createElement('input');
-    input.type='file'; input.accept='.xls,.xlsx';
-    input.onchange = async ()=>{
-      const file = input.files?.[0];
-      if(!file){ resolve(null); return; }
-      try{
-        const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf, {type:'array', cellDates:false, cellNF:false});
-        const sh = wb.Sheets[wb.SheetNames[0]];
-        resolve(XLSX.utils.sheet_to_json(sh, {defval:'', raw:false}));
-      }catch(e){ toast('讀取衛生所查詢失敗：'+e.message,'bad'); resolve(null); }
-    };
-    input.click();
-  });
-  if(!baseList || !baseList.length){ toast('未選擇衛生所查詢檔','warn'); return; }
-
-  const base = baseList.map(r => ({
-    cisid: String(r.id93||'').trim(),
-    name:  String(r.name||'').trim(),
-    idno:  String(r.idno||'').trim(),
-    tel1:  String(r.tel1||'').trim(),
-    tel2:  String(r.cellular||r.tel2||'').trim(),
-  })).filter(p => p.idno || p.cisid);
+  // 拿不到（舊場次或 roster sheet 空）→ fallback 請拖檔
+  if(!base){
+    const proceed = await dialog(
+      `<h3>匯出當場個案</h3>
+       <p>此場次未存掛號名冊（舊版場次），請拖入 <b>衛生所查詢.xls</b>（當天 HIS export）。</p>
+       <p style="font-size:12px;color:#666">新開的場次會自動記住名冊，下次匯出免拖檔。</p>`,
+      [{label:'取消'},{label:'選檔', primary:true}]
+    );
+    if(proceed!==1) return;
+    const baseList = await new Promise(resolve => {
+      const input = document.createElement('input');
+      input.type='file'; input.accept='.xls,.xlsx';
+      input.onchange = async ()=>{
+        const file = input.files?.[0];
+        if(!file){ resolve(null); return; }
+        try{
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, {type:'array', cellDates:false, cellNF:false});
+          const sh = wb.Sheets[wb.SheetNames[0]];
+          resolve(XLSX.utils.sheet_to_json(sh, {defval:'', raw:false}));
+        }catch(e){ toast('讀取衛生所查詢失敗：'+e.message,'bad'); resolve(null); }
+      };
+      input.click();
+    });
+    if(!baseList || !baseList.length){ toast('未選擇衛生所查詢檔','warn'); return; }
+    base = baseList.map(r => ({
+      cisid: String(r.id93||'').trim(),
+      name:  String(r.name||'').trim(),
+      idno:  String(r.idno||'').trim(),
+      tel1:  String(r.tel1||'').trim(),
+      tel2:  String(r.cellular||r.tel2||'').trim(),
+    })).filter(p => p.idno || p.cisid);
+  }
 
   const fobtRpt = s => {
     const t = String(s||'').trim();

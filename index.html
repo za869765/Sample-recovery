@@ -870,7 +870,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.30';
+const APP_VERSION = 'v0.3.31';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2329,12 +2329,13 @@ function openDailyChart(){
   const data = {
     sessionDate: State.session.date,
     sessionDateDisplay: rocToDate(State.session.date),
-    fobtTotal: (State.session.cases.fobt||[]).length,
-    fobtDone:  (State.session.cases.fobt||[]).filter(r=>r.status==='V').length,
-    fobtSent:  (State.session.cases.fobt||[]).filter(r=>r.sendDate).length,
-    gastricTotal: (State.session.cases.gastric||[]).length,
-    gastricDone:  (State.session.cases.gastric||[]).filter(r=>r.status==='V').length,
-    gastricSent:  (State.session.cases.gastric||[]).filter(r=>r.sendDate).length,
+    /* v0.3.31 圖表分母排除退掛（cancel）；done/sent 加上 !cancel 防呆，邏輯與 home 統計一致 */
+    fobtTotal: (State.session.cases.fobt||[]).filter(r=>!r.cancel).length,
+    fobtDone:  (State.session.cases.fobt||[]).filter(r=>!r.cancel && r.status==='V').length,
+    fobtSent:  (State.session.cases.fobt||[]).filter(r=>!r.cancel && r.sendDate).length,
+    gastricTotal: (State.session.cases.gastric||[]).filter(r=>!r.cancel).length,
+    gastricDone:  (State.session.cases.gastric||[]).filter(r=>!r.cancel && r.status==='V').length,
+    gastricSent:  (State.session.cases.gastric||[]).filter(r=>!r.cancel && r.sendDate).length,
     noSendCount: noSendF + noSendG,
     series,
   };

@@ -870,7 +870,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.34';
+const APP_VERSION = 'v0.3.35';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -3361,7 +3361,7 @@ function openWithdrawDialog(){
   refresh();
 }
 
-/* ── 匯入檢驗報告：拖入 xls/xlsx → 自動偵測身分證/編號/報告欄 → 預覽 → 批次寫 F 欄 ── */
+/* ── 匯入檢驗報告：自動跳過前 N 列 metadata 找 header；支援腸/胃分開報告欄；跳過「未完成」 ── */
 async function importReport(){
   if(!State.session){ toast('請先開啟場次','warn'); return; }
   const input = document.createElement('input');
@@ -3372,87 +3372,121 @@ async function importReport(){
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, {type:'array', cellDates:false, cellNF:false});
       const sh = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sh, {defval:'', raw:false});
-      if(!rows.length){ toast('檔案沒有資料','bad'); return; }
-      const cols = Object.keys(rows[0]);
-      const findCol = (...keys) => cols.find(c => keys.some(k => String(c).toLowerCase().includes(k.toLowerCase())));
-      const idCol  = findCol('身分證','身份證','idno','id_no');
-      const cisCol = findCol('cisid','編號','掛號','序號');
-      const repCol = findCol('報告','結果','判讀','異常','陽性','陰性','正常');
-      if((!idCol && !cisCol) || !repCol){
-        return dialog(
-          `<h3>無法匯入</h3>
-           <p>找不到必要欄位（需要「身分證或編號」與「報告/結果/判讀」）。檔案欄位：</p>
-           <pre style="background:#f5f5f5;padding:8px;font-size:12px;max-height:200px;overflow:auto;white-space:pre-wrap">${escapeHTML(cols.join(', '))}</pre>`,
-          [{label:'關閉', primary:true}]
-        );
+      const aoa = XLSX.utils.sheet_to_json(sh, {header:1, defval:''});
+      if(!aoa.length){ toast('檔案沒有資料','bad'); return; }
+      let hIdx = -1;
+      for(let i=0; i<Math.min(10, aoa.length); i++){
+        const row = aoa[i].map(v => String(v||'').toLowerCase());
+        if(row.some(c => /身分證|身份證|病患身份證|病歷號|id93|cisid|idno/.test(c))){ hIdx = i; break; }
+      }
+      if(hIdx<0){
+        return dialog(`<h3>無法匯入</h3><p>前 10 列找不到 header 列（需含「身分證」「病歷號」「id93」等關鍵字）。</p>`, [{label:'關閉',primary:true}]);
+      }
+      const headers = aoa[hIdx].map(v => String(v||'').trim());
+      const dataRows = aoa.slice(hIdx+1).filter(r => r.some(v => String(v||'').trim()));
+      const findIdx = (...keys) => headers.findIndex(h => keys.some(k => String(h).toLowerCase().includes(k.toLowerCase())));
+      const idIdx   = findIdx('病患身份證','身分證','身份證','idno','id_no');
+      const cisIdx  = findIdx('cisid','病歷號','id93','編號','掛號','序號');
+      let fobtIdx  = findIdx('ng/ml','fobt','fit','潛血');
+      let gasIdx   = findIdx('hpag','hpsa','幽門','pylori');
+      const genIdx = findIdx('報告','結果','判讀');
+      if(fobtIdx<0 || gasIdx<0){
+        for(let i=0; i<hIdx; i++){
+          for(let j=0; j<aoa[i].length; j++){
+            const v = String(aoa[i][j]||'').trim().toLowerCase();
+            if(fobtIdx<0 && (/^85$/.test(v) || /腸|fobt|fit/i.test(v))) fobtIdx = j;
+            if(gasIdx<0 && (/hpag|hpsa|幽門|pylori|胃/i.test(v))) gasIdx = j;
+          }
+        }
+      }
+      if(idIdx<0 && cisIdx<0){
+        return dialog(`<h3>無法匯入</h3><p>header 列 (row ${hIdx+1}) 找不到身分證或編號欄。檔案欄位:</p><pre style="background:#f5f5f5;padding:8px;font-size:12px;max-height:200px;overflow:auto;white-space:pre-wrap">${escapeHTML(headers.filter(h=>h).join(', '))}</pre>`, [{label:'關閉',primary:true}]);
+      }
+      if(fobtIdx<0 && gasIdx<0 && genIdx<0){
+        return dialog(`<h3>無法匯入</h3><p>找不到報告欄 (腸: ng/ml/FOBT/85；胃: HPAG/HPSA/幽門；或通用「報告/結果/判讀」)。</p>`, [{label:'關閉',primary:true}]);
       }
       const byId = new Map(), byCis = new Map();
       for(const p of State.session.merged){
         if(p.idno)  byId.set(String(p.idno).trim(), p);
         if(p.cisid) byCis.set(String(p.cisid).trim(), p);
       }
-      const matched = [], unmatched = [];
-      for(const r of rows){
-        const report = String(r[repCol]||'').trim();
-        if(!report) continue;
-        const id  = idCol  ? String(r[idCol]||'').trim()  : '';
-        const cis = cisCol ? String(r[cisCol]||'').trim() : '';
+      const isPlaceholder = s => !s || /^(未完成|未做|pending|na|n\/a|-+|—|–)$/i.test(String(s).trim());
+      const buckets = { fobt: new Map(), gastric: new Map() };
+      let matchedPersons = 0, unmatched = 0;
+      const unmatchedSamples = [];
+      for(const row of dataRows){
+        const id  = idIdx>=0  ? String(row[idIdx]||'').trim()  : '';
+        const cis = cisIdx>=0 ? String(row[cisIdx]||'').trim() : '';
         const person = (id && byId.get(id)) || (cis && byCis.get(cis));
-        if(!person){ unmatched.push({id, cis, report}); continue; }
-        const kinds = [];
-        if(person.fobt) kinds.push('fobt');
-        if(person.gastric) kinds.push('gastric');
-        if(kinds.length) matched.push({person, report, kinds});
+        if(!person){
+          unmatched++;
+          if(unmatchedSamples.length<5) unmatchedSamples.push(`${id||'-'}/${cis||'-'}`);
+          continue;
+        }
+        let any = false;
+        if(fobtIdx>=0 && person.fobt){
+          const v = String(row[fobtIdx]||'').trim();
+          if(!isPlaceholder(v)){ buckets.fobt.set(person.cisid, v); any = true; }
+        }
+        if(gasIdx>=0 && person.gastric){
+          const v = String(row[gasIdx]||'').trim();
+          if(!isPlaceholder(v)){ buckets.gastric.set(person.cisid, v); any = true; }
+        }
+        if(fobtIdx<0 && gasIdx<0 && genIdx>=0){
+          const v = String(row[genIdx]||'').trim();
+          if(!isPlaceholder(v)){
+            if(person.fobt){ buckets.fobt.set(person.cisid, v); any = true; }
+            if(person.gastric){ buckets.gastric.set(person.cisid, v); any = true; }
+          }
+        }
+        if(any) matchedPersons++;
       }
-      if(!matched.length){
-        return dialog(
-          `<h3>匯入失敗</h3>
-           <p>沒有任何一筆比對到場次中的個案。</p>
-           <p style="font-size:12px;color:#666">檔案 ${rows.length} 列，使用欄位：身分證=${escapeHTML(idCol||'—')} / 編號=${escapeHTML(cisCol||'—')} / 報告=${escapeHTML(repCol)}</p>`,
-          [{label:'關閉', primary:true}]
-        );
+      const totalCells = buckets.fobt.size + buckets.gastric.size;
+      if(!totalCells){
+        return dialog(`<h3>沒有報告可寫入</h3><p>${matchedPersons===0 ? `共 ${dataRows.length} 列均未比對到場次個案。` : '比對到的個案中沒有有效報告 (多為「未完成」)。'}</p>`, [{label:'關閉',primary:true}]);
       }
-      const previewRows = matched.slice(0,10).map(m=>
-        `<tr><td style="padding:4px 8px">${escapeHTML(m.person.name)}</td><td class="rs-mono" style="padding:4px 8px">${escapeHTML(m.person.cisid)}</td><td style="padding:4px 8px">${escapeHTML(m.report)}</td></tr>`
+      const preview = [];
+      for(const [cid,r] of buckets.fobt){ if(preview.length>=10) break; const p=byCis.get(cid); preview.push({n:p?.name||'',c:cid,k:'腸',r}); }
+      for(const [cid,r] of buckets.gastric){ if(preview.length>=10) break; const p=byCis.get(cid); preview.push({n:p?.name||'',c:cid,k:'胃',r}); }
+      const previewHtml = preview.map(m =>
+        `<tr><td style="padding:4px 8px">${escapeHTML(m.n)}</td><td class="rs-mono" style="padding:4px 8px">${escapeHTML(m.c)}</td><td style="padding:4px 8px">${m.k}</td><td style="padding:4px 8px">${escapeHTML(m.r)}</td></tr>`
       ).join('');
       const ok = await dialog(
         `<h3>匯入檢驗報告預覽</h3>
-         <p>比對到 <b>${matched.length}</b> 筆 / 共 ${rows.length} 列（未比對 ${unmatched.length}）</p>
-         <p style="font-size:12px;color:#666">欄位映射：身分證=${escapeHTML(idCol||'—')} / 編號=${escapeHTML(cisCol||'—')} / 報告=${escapeHTML(repCol)}</p>
+         <p>讀到 ${dataRows.length} 列；比對 <b>${matchedPersons}</b> 人；寫入 <b>${buckets.fobt.size}</b> 腸 + <b>${buckets.gastric.size}</b> 胃 = ${totalCells} 格</p>
+         <p style="font-size:12px;color:#666">身分證=${escapeHTML(idIdx>=0?(headers[idIdx]||'col'+idIdx):'—')} / 編號=${escapeHTML(cisIdx>=0?(headers[cisIdx]||'col'+cisIdx):'—')} / 腸=${escapeHTML(fobtIdx>=0?(headers[fobtIdx]||'col'+fobtIdx):'—')} / 胃=${escapeHTML(gasIdx>=0?(headers[gasIdx]||'col'+gasIdx):'—')}</p>
          <table style="width:100%;border-collapse:collapse;font-size:13px;margin:8px 0">
-           <thead><tr style="background:#f5f5f5"><th style="text-align:left;padding:4px 8px">姓名</th><th style="text-align:left;padding:4px 8px">編號</th><th style="text-align:left;padding:4px 8px">報告</th></tr></thead>
-           <tbody>${previewRows}</tbody>
+           <thead><tr style="background:#f5f5f5"><th style="text-align:left;padding:4px 8px">姓名</th><th style="text-align:left;padding:4px 8px">編號</th><th style="text-align:left;padding:4px 8px">類</th><th style="text-align:left;padding:4px 8px">報告</th></tr></thead>
+           <tbody>${previewHtml}</tbody>
          </table>
-         ${matched.length>10?`<p style="font-size:12px;color:#666">…還有 ${matched.length-10} 筆</p>`:''}
-         <p style="color:#c33;font-size:13px">確認後將寫入「報告」欄(F)，同 cisid 兩邊都會寫。</p>`,
-        [{label:'取消'},{label:`寫入 ${matched.length} 筆`, primary:true}]
+         ${unmatched ? `<p style="font-size:12px;color:#888">未比對 ${unmatched} 列 (樣本: ${escapeHTML(unmatchedSamples.join(', '))})</p>` : ''}
+         <p style="color:#c33;font-size:13px">「未完成」「pending」等佔位值自動跳過。</p>`,
+        [{label:'取消'},{label:`寫入 ${totalCells} 格`, primary:true}]
       );
       if(ok!==1) return;
-      const buckets = { fobt: [], gastric: [] };
-      for(const m of matched){
-        for(const kind of m.kinds){
-          buckets[kind].push({ cisid: m.person.cisid, fields: { report: m.report } });
-          if(m.person[kind]) m.person[kind].report = m.report;
-        }
-      }
       setSync('syncing','匯入中…');
       let writeCount = 0, errMsg = '';
       for(const kind of ['fobt','gastric']){
-        if(!buckets[kind].length) continue;
+        if(!buckets[kind].size) continue;
+        const updates = [];
+        for(const [cisid, r] of buckets[kind]){
+          updates.push({cisid, fields:{report: r}});
+          const p = byCis.get(cisid);
+          if(p && p[kind]) p[kind].report = r;
+        }
         try{
           const res = await fetch('/api/batch_case', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ date: State.session.date, type: kind, updates: buckets[kind] }),
+            body: JSON.stringify({date:State.session.date, type:kind, updates}),
           });
           const j = await res.json();
           if(!j.ok) throw new Error(j.error||'failed');
           writeCount += j.updated||0;
         }catch(e){ errMsg = e.message; }
       }
-      if(errMsg){ setSync('bad','匯入失敗'); toast('匯入失敗：'+errMsg,'bad'); return; }
+      if(errMsg){ setSync('bad','匯入失敗'); toast('匯入失敗:'+errMsg,'bad'); return; }
       setSync('ok',`匯入 ${writeCount} 格`);
-      toast(`已匯入 ${matched.length} 筆報告`,'ok');
+      toast(`已匯入 ${matchedPersons} 人 / ${writeCount} 格`,'ok');
       renderCases();
     }catch(e){
       toast('讀取檔案失敗：'+e.message,'bad');

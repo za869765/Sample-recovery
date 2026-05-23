@@ -488,6 +488,7 @@ body.readonly #btn-export-cases,
 body.readonly #btn-export-overview,
 body.readonly #btn-groups,
 body.readonly #btn-reimbursement,
+body.readonly #btn-export-positive,
 body.readonly #restock-strip,
 body.readonly #btn-open-new,
 body.readonly .rs-hints{display:none !important}
@@ -842,6 +843,10 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><rect x="1.5" y="2.5" width="10" height="8" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M3.5 5.5 h6 M3.5 7.5 h6 M3.5 9.5 h4" stroke="currentColor" stroke-width="1.1" fill="none"/></svg>
         衛生所繳回款
       </button>
+      <button class="rs-btn is-sm" id="btn-export-positive" data-tip="匯出本場陽性名單 xlsx（腸 + 胃 合併，含聯絡資訊）。腸/胃單獨匯出請用儀錶板的「陽性 N」KPI">
+        <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M6.5 4 v5 M4 6.5 h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        陽性名單
+      </button>
     </div>
 
     <div style="padding:12px 20px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0">
@@ -900,7 +905,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.47';
+const APP_VERSION = 'v0.3.48';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2096,6 +2101,7 @@ document.getElementById('btn-export-cases').onclick = exportCasesXlsx;
 document.getElementById('btn-export-overview').onclick = exportOverview;
 document.getElementById('btn-groups').onclick = openGroupsDialog;
 document.getElementById('btn-reimbursement').onclick = openReimbursementDialog;
+document.getElementById('btn-export-positive').onclick = () => exportPositiveList();
 document.getElementById('btn-open-existing').onclick = loadHome;
 document.getElementById('btn-home').onclick = loadHome;
 document.getElementById('btn-upload-back').onclick = loadHome;

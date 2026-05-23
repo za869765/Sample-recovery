@@ -23,7 +23,7 @@ export async function onRequestPost({ request, env }){
 
     // clear existing data rows (preserve header)
     for (const t of [tabF, tabG]){
-      await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(t)}!A2:L:clear`, 'POST', {}, token);
+      await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(t)}!A2:M:clear`, 'POST', {}, token);
     }
     if (Array.isArray(roster)){
       await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(tabR)}!A2:F:clear`, 'POST', {}, token);
@@ -31,14 +31,15 @@ export async function onRequestPost({ request, env }){
 
     // build rows (dispatch 寫 MM/DD 不是民國 7 碼)
     const dispatchMMDD = rocToMMDD(date);
-    const toCase = (r) => ({
+    const toCase = (r, defaultSource) => ({
       name: r.name, idno: r.idno, tel1: r.tel1, tel2: r.tel2,
       status:'', report:'', referral:false, missed:false,
       dispatch: dispatchMMDD, sendDate:'', cancel:false,
       cisid: r.cisid,
+      source: r.source || defaultSource || '',
     });
-    const fobtRows = fobt.map(r => caseToRow(toCase(r)));
-    const gastRows = gastric.map(r => caseToRow(toCase(r)));
+    const fobtRows = fobt.map(r => caseToRow(toCase(r, '6E')));
+    const gastRows = gastric.map(r => caseToRow(toCase(r, '6F')));
     const rosterRows = Array.isArray(roster) ? roster.map(rosterToRow) : [];
 
     if (fobtRows.length){

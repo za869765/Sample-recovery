@@ -157,6 +157,17 @@ button.rs-cisid{font:inherit;font-family:var(--mono);font-size:13.5px;font-weigh
 .rs-restock-unit{font-size:11px;color:var(--ink-mute)}
 .rs-restock-formula{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);padding:0 4px;letter-spacing:.01em}
 
+/* ── 衛生所繳回款 預覽列 ── */
+.rs-reimburse{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:8px 14px;background:oklch(0.97 0.02 230);border:1px solid oklch(0.85 0.05 230);border-radius:var(--radius);font-size:12.5px}
+.rs-reimburse-lbl{font-size:11px;letter-spacing:.06em;color:oklch(0.40 0.10 230);text-transform:uppercase;font-weight:600}
+.rs-reimburse-item{display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid oklch(0.85 0.05 230);border-radius:4px;padding:2px 6px;font-size:12px}
+.rs-reimburse-item b{font-family:var(--mono);font-weight:700;color:var(--ink)}
+.rs-reimburse-item .cost{font-family:var(--mono);font-size:10.5px;color:var(--ink-mute);margin-left:3px}
+.rs-reimburse-sub{font-family:var(--mono);font-weight:700;font-size:13px;color:oklch(0.35 0.12 230);padding:0 6px}
+.rs-reimburse-dl{font-size:11.5px;background:oklch(0.95 0.05 230);border:1px solid oklch(0.75 0.10 230);color:oklch(0.30 0.15 230);padding:3px 10px;border-radius:4px;cursor:pointer;font-weight:600}
+.rs-reimburse-dl:hover{background:oklch(0.90 0.08 230)}
+body.readonly .rs-reimburse-dl{display:none}
+
 /* ── age tag, sex glyph ── */
 .rs-age{display:inline-flex;align-items:center;height:18px;padding:0 5px;font-family:var(--mono);font-size:10.5px;border-radius:3px;background:var(--surface-alt);border:1px solid var(--line);color:var(--ink-mute)}
 .rs-age.is-elig{background:var(--ok-soft);color:var(--ok);border-color:color-mix(in oklab,var(--ok) 25%,white)}
@@ -476,6 +487,7 @@ body.readonly #btn-import-report,
 body.readonly #btn-export-cases,
 body.readonly #btn-export-overview,
 body.readonly #btn-groups,
+body.readonly #btn-reimbursement,
 body.readonly #restock-strip,
 body.readonly #btn-open-new,
 body.readonly .rs-hints{display:none !important}
@@ -826,11 +838,16 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="4" cy="5" r="1.6" stroke="currentColor" stroke-width="1.1" fill="none"/><circle cx="9" cy="5" r="1.6" stroke="currentColor" stroke-width="1.1" fill="none"/><path d="M1.5 11 q0 -2 2.5 -2 q2.5 0 2.5 2 M6.5 11 q0 -2 2.5 -2 q2.5 0 2.5 2" stroke="currentColor" stroke-width="1.1" fill="none"/></svg>
         分組設定
       </button>
+      <button class="rs-btn is-sm" id="btn-reimbursement" data-tip="匯出衛生所繳回款 xlsx：1:1 模板，按 6E/6F/free 計數 + 公式自動算費用">
+        <svg width="13" height="13" viewBox="0 0 13 13"><rect x="1.5" y="2.5" width="10" height="8" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M3.5 5.5 h6 M3.5 7.5 h6 M3.5 9.5 h4" stroke="currentColor" stroke-width="1.1" fill="none"/></svg>
+        衛生所繳回款
+      </button>
     </div>
 
     <div style="padding:12px 20px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0">
       <div class="rs-stats" id="stats-strip"></div>
       <div class="rs-restock" id="restock-strip"></div>
+      <div class="rs-reimburse" id="reimburse-strip"></div>
       <div class="rs-tbl-wrap" style="flex:1;min-height:0">
         <div class="rs-tbl-scroll">
           <table class="rs-tbl" id="cases-table">
@@ -883,7 +900,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.46';
+const APP_VERSION = 'v0.3.47';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1366,9 +1383,11 @@ async function doInit(){
     idno:  String(r['身份證字號']||'').trim(),
     tel1:  phoneNorm(r['聯絡電話']),
     tel2:  phoneNorm(r['手機']),
+    source:'6E',
   }));
   const freeRows = [...State.candPicked].map(i=>State.candidates[i]).map(c=>({
     cisid: c.id93, name: c.name, idno: c.idno, tel1: phoneNorm(c.tel1), tel2: phoneNorm(c.cellular),
+    source:'free',
   }));
   const gastric = State.files.gastric.rows.map(r=>({
     cisid: String(r.cisid||'').trim(),
@@ -1376,6 +1395,7 @@ async function doInit(){
     idno:  String(r.IDNO||'').trim(),
     tel1:  phoneNorm(r.HomeTEL1),
     tel2:  phoneNorm(r.MOBTEL1),
+    source:'6F',
   }));
   const roster = (State.files.visit?.rows || []).map(r => ({
     cisid: String(r.id93||'').trim(),
@@ -1800,6 +1820,8 @@ function renderCases(){
   `;
   document.querySelectorAll('[data-restock]').forEach(b=>b.onclick=()=>addRestock(b.dataset.restock, parseInt(b.dataset.delta,10)));
 
+  updateReimburseStrip();
+
   const list = currentMerged();
   document.getElementById('cases-tbody').innerHTML = list.map(p=>rowHTML(p)).join('');
   bindRowEvents();
@@ -2073,6 +2095,7 @@ document.getElementById('btn-export-chart').onclick = exportChartPNG;
 document.getElementById('btn-export-cases').onclick = exportCasesXlsx;
 document.getElementById('btn-export-overview').onclick = exportOverview;
 document.getElementById('btn-groups').onclick = openGroupsDialog;
+document.getElementById('btn-reimbursement').onclick = openReimbursementDialog;
 document.getElementById('btn-open-existing').onclick = loadHome;
 document.getElementById('btn-home').onclick = loadHome;
 document.getElementById('btn-upload-back').onclick = loadHome;
@@ -2984,6 +3007,221 @@ async function exportPositiveList(kind){
 }
 
 function escapeHTML(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ── 衛生所繳回款（1:1 模板對應「腸胃回報.xlsx」）──
+   D = 45-75 FOBT 完成 (source='6E' / fallback subsidy localStorage)
+   F = 45-75 FOBT 耗損 (手填，預設 0)
+   H = 胃 完成 (全 gastric，含 1A03/1H01 單掛)
+   J = 胃 耗損 (手填)
+   L = 非45-75 完成 (source='free' / subsidy)
+   N = 非45-75 耗損 (手填)
+   費用由 xlsx 公式自動算: E=D*70, G=F*35, I=H*150, K=J*20, M=L*70, O=N*40, P=E+G+I+K+M+O
+*/
+function computeReimburseStats(){
+  if(!State.session) return null;
+  const sub = State.subsidy || new Set();
+  const isFree = c => c.source==='free' || (!c.source && sub.has(c.cisid));
+  const is6E   = c => c.source==='6E'   || (!c.source && !sub.has(c.cisid));
+  const fobtArr = (State.session.cases.fobt||[]).filter(c => !c.cancel);
+  const gastArr = (State.session.cases.gastric||[]).filter(c => !c.cancel);
+  return {
+    D: fobtArr.filter(c => is6E(c)   && c.status==='V').length,
+    L: fobtArr.filter(c => isFree(c) && c.status==='V').length,
+    H: gastArr.filter(c => c.status==='V').length,
+  };
+}
+
+function updateReimburseStrip(){
+  const el = document.getElementById('reimburse-strip');
+  if(!el) return;
+  if(!State.session){ el.innerHTML=''; return; }
+  const s = computeReimburseStats();
+  const loss = State.reimburseLoss || {F:0, J:0, N:0};
+  const costD = s.D*70, costF = loss.F*35, costH = s.H*150, costJ = loss.J*20, costL = s.L*70, costN = loss.N*40;
+  const subtotal = costD + costF + costH + costJ + costL + costN;
+  const fmt = n => n.toLocaleString('en-US');
+  el.innerHTML = `
+    <span class="rs-reimburse-lbl">繳回款預覽</span>
+    <span class="rs-reimburse-item" data-tip="45-75 FOBT 完成 × 70 元 / 人">FOBT 預防 <b>${s.D}</b><span class="cost">$${fmt(costD)}</span></span>
+    <span class="rs-reimburse-item" data-tip="胃 完成 × 150 元 / 人">胃 <b>${s.H}</b><span class="cost">$${fmt(costH)}</span></span>
+    <span class="rs-reimburse-item" data-tip="非45-75 完成 × 70 元 / 人">FOBT 非預防 <b>${s.L}</b><span class="cost">$${fmt(costL)}</span></span>
+    <span class="rs-reimburse-item" data-tip="額外耗損試劑數（手填，預設 0），點下載按鈕修改">耗損 <b>${loss.F}+${loss.J}+${loss.N}</b><span class="cost">$${fmt(costF+costJ+costN)}</span></span>
+    <span class="rs-reimburse-sub">小計 $${fmt(subtotal)}</span>
+    <button class="rs-reimburse-dl" id="reimburse-dl-quick" data-tip="開啟 dialog 修改場次/耗損並下載 1:1 模板 xlsx">下載 xlsx</button>
+  `;
+  const dlBtn = document.getElementById('reimburse-dl-quick');
+  if(dlBtn) dlBtn.onclick = openReimbursementDialog;
+}
+
+async function openReimbursementDialog(){
+  if(!State.session){ toast('未開啟場次','warn'); return; }
+  const s = computeReimburseStats();
+  if(!s){ toast('無資料','warn'); return; }
+  const stored = State.reimburseLoss || {F:0, J:0, N:0, sessionNo:1};
+  const dateROC = State.session.date;
+
+  const body = `
+    <h3>衛生所繳回款（1:1 模板）</h3>
+    <p style="font-size:12px;color:#666;margin:6px 0">區別「佳里」寫死；場次與耗損由你輸入。費用由 xlsx 公式自動算（無公式錯誤）。</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin:6px 0">
+      <tr style="background:#f5f5f5">
+        <th style="padding:6px;text-align:left;width:18%">區別</th><td style="padding:6px;width:15%">佳里</td>
+        <th style="padding:6px;text-align:left;width:18%">日期 (ROC)</th><td style="padding:6px;width:15%">${dateROC}</td>
+        <th style="padding:6px;text-align:left;width:14%">場次</th>
+        <td style="padding:6px"><input type="number" id="rb-sn" class="rs-input" min="1" max="5" value="${stored.sessionNo||1}" style="width:60px;text-align:center"></td>
+      </tr>
+    </table>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin:6px 0">
+      <thead><tr style="background:#f5f5f5">
+        <th style="padding:6px">類別</th>
+        <th style="padding:6px">完成（自動）</th>
+        <th style="padding:6px">單價</th>
+        <th style="padding:6px">耗損（手填）</th>
+        <th style="padding:6px">耗損單價</th>
+      </tr></thead>
+      <tbody>
+        <tr><td style="padding:6px">45-75 FOBT（預防保健 / 6E）</td>
+          <td style="padding:6px;text-align:center"><b>${s.D}</b></td>
+          <td style="padding:6px;text-align:center">70</td>
+          <td style="padding:6px;text-align:center"><input type="number" id="rb-F" class="rs-input" min="0" value="${stored.F||0}" style="width:60px;text-align:center"></td>
+          <td style="padding:6px;text-align:center">35</td>
+        </tr>
+        <tr><td style="padding:6px">胃幽門（45-75 / 6F，含 1A03/1H01 單掛）</td>
+          <td style="padding:6px;text-align:center"><b>${s.H}</b></td>
+          <td style="padding:6px;text-align:center">150</td>
+          <td style="padding:6px;text-align:center"><input type="number" id="rb-J" class="rs-input" min="0" value="${stored.J||0}" style="width:60px;text-align:center"></td>
+          <td style="padding:6px;text-align:center">20</td>
+        </tr>
+        <tr><td style="padding:6px">非 45-75 FOBT（民族補助 / free）</td>
+          <td style="padding:6px;text-align:center"><b>${s.L}</b></td>
+          <td style="padding:6px;text-align:center">70</td>
+          <td style="padding:6px;text-align:center"><input type="number" id="rb-N" class="rs-input" min="0" value="${stored.N||0}" style="width:60px;text-align:center"></td>
+          <td style="padding:6px;text-align:center">40</td>
+        </tr>
+      </tbody>
+    </table>`;
+
+  const result = await new Promise(resolve => {
+    const d = document.getElementById('dialog');
+    const o = document.getElementById('overlay');
+    d.innerHTML = body + `<div class="rs-dialog-actions">
+      <button class="rs-btn" data-act="0">取消</button>
+      <button class="rs-btn is-primary" data-act="1">下載 xlsx</button>
+    </div>`;
+    o.classList.add('is-show');
+    d.querySelectorAll('[data-act]').forEach(b => b.onclick = ()=>{
+      o.classList.remove('is-show');
+      resolve(parseInt(b.dataset.act,10));
+    });
+    o.onclick = e => { if(e.target===o){ o.classList.remove('is-show'); resolve(-1); } };
+  });
+  if(result !== 1) return;
+
+  const F = Math.max(0, parseInt(document.getElementById('rb-F').value,10) || 0);
+  const J = Math.max(0, parseInt(document.getElementById('rb-J').value,10) || 0);
+  const N = Math.max(0, parseInt(document.getElementById('rb-N').value,10) || 0);
+  const sessionNo = Math.max(1, Math.min(5, parseInt(document.getElementById('rb-sn').value,10) || 1));
+  State.reimburseLoss = { F, J, N, sessionNo };
+  updateReimburseStrip();
+  await buildReimbursementXlsx(s, F, J, N, sessionNo);
+}
+
+async function buildReimbursementXlsx(stats, F, J, N, sessionNo){
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Sample-recovery';
+  const ws = wb.addWorksheet('衛生所繳回款');
+
+  const FONT = { name:'標楷體', size:12 };
+  const TITLE_FONT = { name:'標楷體', size:16 };
+  const HEAD_FILL_BLUE = { type:'pattern', pattern:'solid', fgColor:{argb:'FF00B0F0'} };
+  const B = { top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'} };
+  const NUM_FMT = '_-* #,##0_-;\\-* #,##0_-;_-* "-"??_-;_-@_-';
+
+  // Column widths (匹配原模板)
+  const widths = [7,13.88,7,10.38,14.88,10.38,14.88,11.75,16.25,11.75,16.25,10.38,14.88,10.38,17.38,13.62,6.5];
+  widths.forEach((w,i)=>{ ws.getColumn(i+1).width = w; });
+
+  // Row 1: 大標
+  ws.mergeCells('A1:Q1');
+  const a1 = ws.getCell('A1');
+  a1.value = '115年臺南市「行動醫院、全民健檢」衛生所繳回款';
+  a1.font = TITLE_FONT;
+  a1.alignment = { vertical:'middle', horizontal:'center' };
+  a1.border = { bottom:{style:'thin'} };
+  ws.getRow(1).height = 21;
+
+  // Row 2-4: 表頭結構 (merge 同模板)
+  ws.getRow(2).height = 16.5;
+  ws.getRow(3).height = 60;
+  ws.getRow(4).height = 82;
+  ws.mergeCells('A2:A4'); ws.mergeCells('B2:B4'); ws.mergeCells('C2:C4');
+  ws.mergeCells('D2:K2'); ws.mergeCells('L2:O2');
+  ws.mergeCells('P2:P4'); ws.mergeCells('Q2:Q4');
+  ws.mergeCells('D3:G3'); ws.mergeCells('H3:K3'); ws.mergeCells('L3:O3');
+
+  const setHeader = (coord, value, fill) => {
+    const c = ws.getCell(coord);
+    c.value = value;
+    c.font = FONT;
+    c.alignment = { vertical:'middle', horizontal:'center', wrapText:true };
+    c.border = B;
+    if(fill) c.fill = fill;
+  };
+  setHeader('A2', '區 別');
+  setHeader('B2', '辦理\n日期\n(yyymmdd)');
+  setHeader('C2', '場次');
+  setHeader('L2', '非申請健保給付部分');
+  setHeader('P2', 'FOBT篩檢\n小計（3）=R+T+V+X', HEAD_FILL_BLUE);
+  setHeader('Q2', '備註');
+  setHeader('D3', '45-75歲FOBT項目\n檢驗費用及未檢成本費用\n70元明細或40元未檢成本明細');
+  setHeader('H3', '胃幽門螺旋桿菌檢測\n45-75歲\n150元檢驗費用及20元成本');
+  setHeader('L3', '40-75歲未符合FOBT資格誤檢\n及民族事務委員會補助');
+  setHeader('D4', '人數'); setHeader('E4', '檢驗費用\n70元/人');
+  setHeader('F4', '人數'); setHeader('G4', '未檢\n成本費用\n35元/人');
+  setHeader('H4', '人數'); setHeader('I4', '檢驗費用\n150元/人');
+  setHeader('J4', '人數'); setHeader('K4', '未檢\n成本費用\n20元/人');
+  setHeader('L4', '人數'); setHeader('M4', '檢驗費用\n70元/人');
+  setHeader('N4', '人數'); setHeader('O4', '未檢成本費用\n40元/人');
+
+  // Row 5: 資料行（人數寫死、費用用公式）
+  const cells = [
+    {a:'A5', v:'佳里'},
+    {a:'B5', v:State.session.date}, // ROC 7 碼字串
+    {a:'C5', v:sessionNo},
+    {a:'D5', v:stats.D, nf:NUM_FMT},
+    {a:'E5', v:{formula:'D5*70'},  nf:NUM_FMT},
+    {a:'F5', v:F,        nf:NUM_FMT},
+    {a:'G5', v:{formula:'F5*35'},  nf:NUM_FMT},
+    {a:'H5', v:stats.H,  nf:NUM_FMT},
+    {a:'I5', v:{formula:'H5*150'}, nf:NUM_FMT},
+    {a:'J5', v:J,        nf:NUM_FMT},
+    {a:'K5', v:{formula:'J5*20'},  nf:NUM_FMT},
+    {a:'L5', v:stats.L,  nf:NUM_FMT},
+    {a:'M5', v:{formula:'L5*70'},  nf:NUM_FMT},
+    {a:'N5', v:N,        nf:NUM_FMT},
+    {a:'O5', v:{formula:'N5*40'},  nf:NUM_FMT},
+    {a:'P5', v:{formula:'E5+G5+I5+K5+M5+O5'}, nf:NUM_FMT, fill:HEAD_FILL_BLUE},
+    {a:'Q5', v:''},
+  ];
+  for(const d of cells){
+    const c = ws.getCell(d.a);
+    c.value = d.v;
+    c.font = FONT;
+    c.alignment = { vertical:'middle', horizontal:'center' };
+    c.border = B;
+    if(d.nf) c.numFmt = d.nf;
+    if(d.fill) c.fill = d.fill;
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `衛生所繳回款_${State.session.date}_第${sessionNo}場.xlsx`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`已匯出 衛生所繳回款 (${stats.D+stats.L+stats.H} 人 / 耗損 ${F+J+N})`,'ok');
+}
 
 /* ── 本場每日進度圖表 ── */
 /* ── 每日送管進度 v3：進度環 + 累計 S-curve + Day Strip ── */

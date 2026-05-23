@@ -33,6 +33,7 @@ export async function onRequestPost({ request, env }){
       status:'', report:'', referral:false, missed:false,
       dispatch, sendDate:'', cancel:false,
       cisid,
+      source: c.source || (type==='gastric' ? '6F' : ''),
     });
 
     await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(title)}!A2:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,

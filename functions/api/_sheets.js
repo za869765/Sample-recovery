@@ -1,7 +1,7 @@
 // Shared Google Sheets helpers for all /api/* endpoints.
 // Pages Functions auto-skip files prefixed with _ so this is not an endpoint.
 
-export const HEADER = ['姓名','身分證字號','手機1','手機2','檢體狀態','報告狀態','待轉介','轉介未做腸鏡','發管日','送管日','取消追蹤','編號'];
+export const HEADER = ['姓名','身分證字號','手機1','手機2','檢體狀態','報告狀態','待轉介','轉介未做腸鏡','發管日','送管日','取消追蹤','編號','來源'];
 export const ROSTER_HEADER = ['姓名','身分證字號','手機1','手機2','年齡','編號'];
 export const GROUPS_HEADER = ['姓名','起','迄'];
 export const TAB_PREFIX = { fobt:'行醫腸篩', gastric:'行醫胃篩', roster:'行醫掛號', groups:'行醫分組' };
@@ -125,12 +125,12 @@ export async function readGroups(sheetId, title, token){
 }
 
 export async function readTab(sheetId, title, token){
-  const range = `${encodeURIComponent(title)}!A2:L`;
+  const range = `${encodeURIComponent(title)}!A2:M`;
   const r = await sheetsAPI(`/${sheetId}/values/${range}`, 'GET', null, token);
   return (r.values || []).map((row, i) => rowToCase(row, i+2));
 }
 
-// row[0..11] → case object
+// row[0..12] → case object
 export function rowToCase(row, rowNum){
   const v = i => (row[i]==null ? '' : String(row[i]));
   const rawStatus = v(4);
@@ -148,6 +148,7 @@ export function rowToCase(row, rowNum){
     sendDate:  v(9),
     cancel:    truthy(v(10)),
     cisid:     v(11),
+    source:    v(12),
   };
 }
 function truthy(s){ return s==='1' || s==='TRUE' || s==='true' || s==='✓' || s==='Y' || s==='是'; }
@@ -160,6 +161,7 @@ export function caseToRow(c){
     c.dispatch||'', c.sendDate||'',
     c.cancel?'TRUE':'',
     c.cisid||'',
+    c.source||'',
   ];
 }
 
@@ -167,7 +169,7 @@ export function caseToRow(c){
 export const FIELD_COL = {
   name:'A', idno:'B', tel1:'C', tel2:'D',
   status:'E', report:'F', referral:'G', missed:'H',
-  dispatch:'I', sendDate:'J', cancel:'K', cisid:'L',
+  dispatch:'I', sendDate:'J', cancel:'K', cisid:'L', source:'M',
 };
 
 export function partialValue(field, val){

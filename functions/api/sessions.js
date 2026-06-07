@@ -1,7 +1,7 @@
 // GET /api/sessions
 // Lists 行醫腸篩{date} / 行醫胃篩{date} tabs, groups by date, returns counts + recovery progress.
 
-import { getSheetId, getAccessToken, sheetsAPI, listTabs, TAB_PREFIX, json } from './_sheets.js';
+import { getSheetId, getAccessToken, sheetsAPI, listTabs, TAB_PREFIX, json, rowToCase } from './_sheets.js';
 
 export async function onRequestGet({ env }){
   try{
@@ -34,8 +34,10 @@ export async function onRequestGet({ env }){
         const meta = order[i];
         const rows = vr.values || [];
         const s = byDate.get(meta.date);
-        s[meta.type] = rows.length;
-        s.recovered += rows.filter(row => row[4] === 'V' || row[4] === '已回收').length;
+        // 退掛 (cancel=K=TRUE) 不算入分母，與詳細頁/圖表統計一致
+        const active = rows.map((row, idx) => rowToCase(row, idx + 2)).filter(c => !c.cancel);
+        s[meta.type] = active.length;
+        s.recovered += active.filter(c => c.status === 'V').length;
       });
     }
 

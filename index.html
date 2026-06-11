@@ -489,6 +489,7 @@ body.readonly #btn-export-overview,
 body.readonly #btn-groups,
 body.readonly #btn-reimbursement,
 body.readonly #btn-export-positive,
+body.readonly #btn-referral,
 body.readonly #restock-strip,
 body.readonly #btn-open-new,
 body.readonly .rs-hints{display:none !important}
@@ -847,6 +848,10 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M6.5 4 v5 M4 6.5 h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         陽性名單
       </button>
+      <button class="rs-btn is-sm" id="btn-referral" data-tip="套印健保轉診單：陽性個案一人一頁 A4，列印前可直接點擊修改任何欄位">
+        <svg width="13" height="13" viewBox="0 0 13 13"><rect x="2" y="1.5" width="9" height="10" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M4 4 h5 M4 6 h5 M4 8 h3" stroke="currentColor" stroke-width="1.1" fill="none" stroke-linecap="round"/></svg>
+        轉診單
+      </button>
     </div>
 
     <div style="padding:12px 20px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0">
@@ -905,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.52';
+const APP_VERSION = 'v0.3.53';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1378,6 +1383,12 @@ function updateCandStats(){
 /* ═══════════════════════════════════════════════════════════════════
    INIT (POST /api/init) — build payload + send
    ═══════════════════════════════════════════════════════════════════ */
+// 衛生所查詢 bir_y/bir_m/bir_d → 民國生日 'y/m/d'（任一欄缺或為 0 → 空字串）
+function visitBirth(r){
+  const y = String(r.bir_y||'').trim(), m = String(r.bir_m||'').trim(), d = String(r.bir_d||'').trim();
+  if(!/^\d+$/.test(y) || parseInt(y,10)<=0 || !/^\d+$/.test(m) || !/^\d+$/.test(d)) return '';
+  return `${y}/${m}/${d}`;
+}
 async function doInit(){
   const btn=document.getElementById('btn-init'); const txt=document.getElementById('btn-init-text');
   btn.disabled=true; txt.innerHTML='<span class="spin"></span>建立中…';
@@ -1409,6 +1420,8 @@ async function doInit(){
     tel1:  phoneNorm(r.tel1),
     tel2:  phoneNorm(r.cellular || r.tel2),
     age:   String(r.AGE||'').trim(),
+    birth: visitBirth(r),
+    addr:  String(r.address||'').trim(),
   })).filter(p => p.cisid || p.idno);
   const payload = {
     date: State.date,
@@ -2147,6 +2160,7 @@ document.getElementById('btn-export-overview').onclick = exportOverview;
 document.getElementById('btn-groups').onclick = openGroupsDialog;
 document.getElementById('btn-reimbursement').onclick = openReimbursementDialog;
 document.getElementById('btn-export-positive').onclick = () => exportPositiveList();
+document.getElementById('btn-referral').onclick = openReferralDialog;
 document.getElementById('btn-open-existing').onclick = loadHome;
 document.getElementById('btn-home').onclick = loadHome;
 document.getElementById('btn-upload-back').onclick = loadHome;
@@ -2598,6 +2612,8 @@ async function exportCasesXlsx(){
       tel1:  String(r.tel1||'').trim(),
       tel2:  String(r.cellular||r.tel2||'').trim(),
       age:   String(r.AGE||'').trim(),
+      birth: visitBirth(r),
+      addr:  String(r.address||'').trim(),
     })).filter(p => p.cisid || p.idno);
     if(rosterPayload.length){
       // 同步 State.session.roster 讓本場後續匯出立刻可用
@@ -2816,6 +2832,8 @@ async function exportOverview(){
       tel1:  String(r.tel1||'').trim(),
       tel2:  String(r.cellular||r.tel2||'').trim(),
       age:   String(r.AGE||'').trim(),
+      birth: visitBirth(r),
+      addr:  String(r.address||'').trim(),
     })).filter(p => p.cisid || p.idno);
     if(rosterPayload.length){
       // 同步 State.session.roster 讓本場後續匯出立刻可用
@@ -4291,6 +4309,304 @@ function openWithdrawDialog(){
   input.oninput=refresh;
   input.onkeydown=e=>{ if(e.key==='Escape') close(); };
   refresh();
+}
+
+/* ── 健保轉診單套印：陽性個案一人一頁 A4 整張重印，列印前可直接點擊修改任何欄位 ── */
+const REFERRAL_CLINIC = {
+  name:'佳里區衛生所', code:'2341050015',
+  addr:'台南市佳里區進學路159號', tel:'(06)7213709',
+  dept:'內科', referDept:'肝膽腸胃科',
+};
+function todayROCDot(){
+  const t = new Date();
+  return `${t.getFullYear()-1911}.${t.getMonth()+1}.${t.getDate()}`;
+}
+function sexFromIdno(idno){
+  const c = String(idno||'').charAt(1);
+  if(c==='1'||c==='8') return 'M';
+  if(c==='2'||c==='9') return 'F';
+  return '';
+}
+function referralFormHTML(item, examDate){
+  const esc = escapeHTML;
+  const sex = sexFromIdno(item.idno);
+  const b = String(item.birth||'').split('/');
+  const by=esc(b[0]||''), bm=esc(b[1]||''), bd=esc(b[2]||'');
+  const summary = [
+    item.fobtPos ? `FOBT(+)　${esc(item.fobtVal)} ng/mL` : '',
+    item.gasPos ? 'HPSA(+)' : '',
+  ].filter(Boolean).join('　、　');
+  const C = REFERRAL_CLINIC;
+  return `
+  <div class="form" contenteditable="true" spellcheck="false">
+    <div class="f-head">
+      <div class="f-title">全民健康保險（<b class="ink">${esc(C.name)} ${C.code}</b>）轉診單（轉診至<span class="bl" style="min-width:42mm"></span>院所）</div>
+      <div class="f-line">保險醫事服務機構代號：</div>
+      <div class="f-line">本人已了解衛生所轉診事項，並同意衛生所調閱相關檢查資料：<span class="bl" style="min-width:60mm"></span>（請簽名）</div>
+    </div>
+    <div class="f-flex">
+      <div class="f-main">
+        <div class="f-sec">
+          <div class="vlab">原　診　療　醫　院　診　所</div>
+          <div class="f-rows">
+            <table class="t"><tr>
+              <td class="lab" style="width:11mm">姓名</td><td class="val" style="width:30mm">${esc(item.name)}</td>
+              <td class="lab" style="width:11mm">性別</td><td style="width:20mm">${sex==='M'?'☑':'☐'}男　${sex==='F'?'☑':'☐'}女</td>
+              <td class="lab" style="width:17mm">出生日期</td><td>民國 <b class="ink">${by}</b> 年 <b class="ink">${bm}</b> 月 <b class="ink">${bd}</b> 日</td>
+              <td class="lab" style="width:17mm">身分證號</td><td class="val" style="width:32mm">${esc(item.idno)}</td>
+            </tr></table>
+            <table class="t"><tr>
+              <td class="lab" style="width:17mm">聯絡電話</td>
+              <td style="width:42mm">住家：<b class="ink">${esc(item.tel1)}</b><br>手機：<b class="ink">${esc(item.tel2)}</b></td>
+              <td class="lab" style="width:17mm">聯絡地址</td>
+              <td class="val">${esc(item.addr)}</td>
+            </tr></table>
+            <table class="t"><tr>
+              <td style="width:55%;vertical-align:top"><span class="lab2">A.病情摘要　主訴及簡短病史</span><div class="val" style="min-height:9mm;padding-top:1mm">${summary}</div></td>
+              <td style="vertical-align:top"><span class="lab2">D.藥物過敏史：</span></td>
+            </tr></table>
+            <table class="t"><tr>
+              <td><span class="lab2">B.診斷</span>　ICD-9-CM　病名　1.(主診斷)<span class="bl" style="min-width:40mm"></span>　2.<span class="bl" style="min-width:30mm"></span></td>
+            </tr></table>
+            <table class="t"><tr>
+              <td style="width:55%"><span class="lab2">C.檢查及治療摘要</span><br>1.最近一次檢查結果<br>日期：<b class="ink">${esc(examDate)}</b><br>報告：<b class="ink">陽性</b></td>
+              <td style="vertical-align:top">2.最近一次用藥或手術名稱<br>日期：</td>
+            </tr></table>
+            <table class="t"><tr>
+              <td class="lab" style="width:17mm">轉診目的</td>
+              <td>1.☐急診治療　2.☐住院治療　3.☐門診治療　4.☐進一步檢查，檢查項目：<span class="bl" style="min-width:24mm"></span><br>5.☐轉回轉出或適當之院所繼續追蹤　6.☐其他</td>
+            </tr></table>
+            <table class="t"><tr>
+              <td class="lab" style="width:17mm">院所住址</td>
+              <td class="val">${esc(C.addr)}</td>
+              <td class="lab" style="width:24mm">傳真號碼：<br>電子信箱：</td>
+              <td style="width:32mm"><b class="ink">${esc(C.tel)}</b></td>
+            </tr></table>
+            <table class="t"><tr>
+              <td class="lab" style="width:17mm">診治醫師<br>姓名</td>
+              <td style="width:30mm"></td>
+              <td class="lab" style="width:11mm">科別</td>
+              <td class="val" style="width:20mm">${esc(C.dept)}</td>
+              <td class="lab" style="width:17mm">聯絡電話</td>
+              <td class="val">${esc(C.tel)}</td>
+              <td class="lab" style="width:24mm">醫師簽章</td>
+              <td style="width:26mm"></td>
+            </tr></table>
+            <table class="t"><tr>
+              <td class="lab" style="width:17mm">開單日期</td>
+              <td class="val" style="width:30mm">${esc(todayROCDot())}</td>
+              <td class="lab" style="width:24mm">安排就醫日期</td>
+              <td style="width:30mm"></td>
+              <td style="text-align:center">　　年　　月　　日　　　科　　診　　號</td>
+            </tr></table>
+            <table class="t"><tr>
+              <td class="lab" style="width:24mm">建議轉診<br>院所科別</td>
+              <td style="width:62mm"><span class="refbox">醫院　<b class="ink" style="font-size:13pt">${esc(C.referDept)}</b>　醫師</span></td>
+              <td class="lab" style="width:26mm">轉診院所地址<br>及專線電話</td>
+              <td>地址：<br>電話：</td>
+            </tr></table>
+          </div>
+        </div>
+        <div class="f-sec">
+          <div class="vlab">接　受　轉　診　醫　院　診　所</div>
+          <div class="f-rows">
+            <table class="t"><tr>
+              <td class="lab" style="width:17mm">處理情形</td>
+              <td>1.☐已予急診處置並轉診至<span class="bl" style="min-width:20mm"></span>醫院　2.☐已予急診處置，並住本院<span class="bl" style="min-width:14mm"></span>病房治療中<br>
+                  3.☐已安排住本院<span class="bl" style="min-width:14mm"></span>病房治療中　4.☐已安排本院<span class="bl" style="min-width:14mm"></span>科門診治療中<br>
+                  5.☐已予適當處理並轉回原院所，建議事項如下</td>
+            </tr></table>
+            <table class="t"><tr>
+              <td class="lab" style="width:17mm">治療摘要</td>
+              <td style="width:40%;vertical-align:top">1.主診斷<br>ICD-9-CM：<br>病名：</td>
+              <td style="vertical-align:top">2.治療藥物或手術名稱</td>
+              <td style="vertical-align:top">3.輔助診斷之檢查結果</td>
+            </tr></table>
+            <table class="t"><tr>
+              <td class="lab" style="width:17mm">院所名稱</td><td style="width:40%"></td>
+              <td class="lab" style="width:26mm">電話或傳真：<br>電子信箱：</td><td></td>
+            </tr></table>
+            <table class="t"><tr>
+              <td class="lab" style="width:17mm">診治醫師<br>姓名</td><td style="width:28mm"></td>
+              <td class="lab" style="width:11mm">科別</td><td style="width:18mm"></td>
+              <td class="lab" style="width:17mm">醫師簽章</td><td style="width:30mm"></td>
+              <td class="lab" style="width:17mm">回覆日期</td><td>　　年　　月　　日</td>
+            </tr></table>
+          </div>
+        </div>
+      </div>
+      <div class="f-side">第一聯：接受轉診（轉入）醫院、診所留存</div>
+    </div>
+    <div class="f-foot"><span>※以上欄位均屬必填，如無則填無</span><span>※本轉診單限使用乙次</span></div>
+  </div>`;
+}
+function openReferralPrint(items, examDate){
+  const forms = items.map(it => referralFormHTML(it, examDate)).join('\n');
+  const html = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8">
+<title>轉診單_${State.session.date}</title>
+<style>
+@page{size:A4 portrait;margin:8mm}
+*{box-sizing:border-box}
+body{font-family:"Microsoft JhengHei","PMingLiU",serif;font-size:10pt;color:#000;margin:0}
+.form{page-break-after:always;padding:2mm 0;outline:none}
+.form:last-child{page-break-after:auto}
+.f-head{margin-bottom:1.5mm}
+.f-title{font-size:13.5pt;font-weight:700;letter-spacing:0.05em;margin-bottom:1mm}
+.f-line{font-size:9.5pt;margin:0.8mm 0}
+.bl{display:inline-block;border-bottom:0.35mm solid #000;height:4.5mm;vertical-align:bottom}
+.f-flex{display:flex;gap:1.5mm}
+.f-main{flex:1}
+.f-sec{display:flex;border:0.45mm solid #000;margin-top:-0.45mm}
+.vlab{writing-mode:vertical-rl;text-orientation:upright;letter-spacing:0.4em;text-align:center;font-weight:700;font-size:10.5pt;padding:2mm 1mm;border-right:0.35mm solid #000;width:8mm}
+.f-rows{flex:1}
+table.t{width:100%;border-collapse:collapse;margin-top:-0.25mm}
+table.t td{border:0.25mm solid #000;padding:1mm 1.5mm;font-size:9.5pt;line-height:1.45}
+td.lab{font-size:9pt;text-align:center;background:#fff}
+.lab2{font-size:9pt}
+td.val{font-weight:700;font-size:11pt}
+.ink{font-weight:700}
+.val,.ink{letter-spacing:0.04em}
+.refbox{display:inline-block;border:0.5mm solid #000;padding:1.5mm 3mm;font-size:10.5pt}
+.f-side{writing-mode:vertical-rl;text-orientation:mixed;font-size:9pt;letter-spacing:0.25em;padding:2mm 0.5mm;color:#333}
+.f-foot{display:flex;justify-content:space-between;font-size:9pt;margin-top:1.5mm}
+.bar{padding:8px;background:#f4f2ec;border:1px solid #999;text-align:center;margin-bottom:12px;font-size:13px}
+@media screen{body{padding:16px;max-width:880px;margin:0 auto;background:#f4f2ec}.form{background:#fff;padding:8mm;border:1px solid #ccc;margin-bottom:14px}}
+@media print{.bar{display:none}}
+</style></head><body>
+<div class="bar">
+  <button onclick="window.print()" style="padding:6px 14px;font-size:13px">🖨 列印 ${items.length} 張</button>
+  <span style="margin-left:12px;color:#666">每人一頁 · 點擊表單任何欄位可直接修改後再列印</span>
+</div>
+${forms}
+</body></html>`;
+  const w = window.open('', '_blank', 'width=900,height=1100');
+  if(!w){ toast('彈出視窗被瀏覽器擋下，請允許彈出視窗','bad'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+async function openReferralDialog(){
+  if(!State.session){ toast('未開啟場次','warn'); return; }
+  const merged = State.session.merged || [];
+  const items = [];
+  for(const p of merged){
+    const fobtPos = p.fobt && classifyReport(p.fobt.report)==='pos';
+    const gasPos  = p.gastric && classifyReport(p.gastric.report)==='pos';
+    if(!fobtPos && !gasPos) continue;
+    items.push({ cisid:p.cisid||'', name:p.name||'', idno:p.idno||'', tel1:p.tel1||'', tel2:p.tel2||'',
+      fobtPos, gasPos, fobtVal: fobtPos ? String(p.fobt.report).trim() : '', birth:'', addr:'' });
+  }
+  if(!items.length){ toast('本場沒有陽性個案','warn'); return; }
+  // 從名冊帶出生日/地址
+  const fillFromRoster = ()=>{
+    const byId = new Map(), byCis = new Map();
+    for(const r of (State.session.roster||[])){
+      if(r.idno) byId.set(String(r.idno).trim(), r);
+      if(r.cisid) byCis.set(String(r.cisid).trim(), r);
+    }
+    for(const it of items){
+      const r = (it.idno && byId.get(it.idno)) || (it.cisid && byCis.get(it.cisid));
+      if(r){ if(!it.birth) it.birth = r.birth||''; if(!it.addr) it.addr = r.addr||''; }
+    }
+  };
+  fillFromRoster();
+  const picked = new Set(items.map((_,i)=>i));
+  const missingCount = ()=> items.filter(it => !it.birth || !it.addr).length;
+
+  const d = document.getElementById('dialog');
+  const o = document.getElementById('overlay');
+  const listHtml = items.map((it,i)=>{
+    const kinds = [it.fobtPos?'腸':'', it.gasPos?'胃':''].filter(Boolean).join('+');
+    return `<label style="display:flex;align-items:center;gap:8px;padding:3px 2px;font-size:13px;cursor:pointer">
+      <input type="checkbox" data-i="${i}" checked>
+      <span class="rs-mono" style="color:#888">${escapeHTML(String(it.cisid).slice(-3))}</span>
+      <span style="min-width:64px">${escapeHTML(it.name)}</span>
+      <span style="color:var(--bad);font-weight:600">${kinds}</span>
+      <span class="ref-miss" data-i="${i}" style="font-size:11px;color:${(!it.birth||!it.addr)?'var(--warn,#b06000)':'var(--ok,#137333)'}">${(!it.birth||!it.addr)?'缺生日/地址':'✓'}</span>
+    </label>`;
+  }).join('');
+  d.innerHTML = `
+    <h3>套印轉診單</h3>
+    <p style="font-size:12.5px;color:#666;margin:6px 0">陽性 ${items.length} 人，每人一頁 A4 健保轉診單（${escapeHTML(REFERRAL_CLINIC.name)}）。產生後可在列印頁直接點擊修改任何欄位。</p>
+    <div style="max-height:240px;overflow:auto;border:1px solid #e3e3e3;border-radius:6px;padding:4px 8px;margin:6px 0">${listHtml}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin:8px 0;font-size:13px">
+      <span>檢查日期（報告日期）</span>
+      <input type="text" class="rs-input" id="ref-exam-date" value="${todayROCDot()}" style="width:90px;text-align:center">
+    </div>
+    <div id="ref-miss-row" style="display:${missingCount()?'flex':'none'};align-items:center;gap:8px;background:#fff7e6;border:1px solid #f0d9a8;border-radius:6px;padding:6px 10px;font-size:12px;margin:6px 0">
+      <span style="flex:1"><span id="ref-miss-n">${missingCount()}</span> 人缺出生日期/地址（名冊未含此欄位的舊場次）。可拖入本場「衛生所查詢.xls」一次補齊並存回雲端。</span>
+      <button class="rs-btn is-sm" id="ref-enrich">選擇檔案補齊</button>
+    </div>
+    <div class="rs-dialog-actions">
+      <button class="rs-btn" data-act="0">取消</button>
+      <button class="rs-btn is-primary" data-act="1">產生列印頁</button>
+    </div>`;
+  o.classList.add('is-show');
+  const close = ()=> o.classList.remove('is-show');
+  d.querySelectorAll('input[type="checkbox"][data-i]').forEach(cb => {
+    cb.onchange = ()=>{ const i=+cb.dataset.i; if(cb.checked) picked.add(i); else picked.delete(i); };
+  });
+  const refreshMiss = ()=>{
+    d.querySelectorAll('.ref-miss').forEach(el => {
+      const it = items[+el.dataset.i];
+      const miss = !it.birth || !it.addr;
+      el.textContent = miss ? '缺生日/地址' : '✓';
+      el.style.color = miss ? 'var(--warn,#b06000)' : 'var(--ok,#137333)';
+    });
+    const n = missingCount();
+    const row = d.querySelector('#ref-miss-row');
+    if(row){ row.style.display = n ? 'flex' : 'none'; const nEl = d.querySelector('#ref-miss-n'); if(nEl) nEl.textContent = n; }
+  };
+  const enrichBtn = d.querySelector('#ref-enrich');
+  if(enrichBtn) enrichBtn.onclick = ()=>{
+    const input = document.createElement('input');
+    input.type='file'; input.accept='.xls,.xlsx';
+    input.onchange = async ()=>{
+      const file = input.files?.[0]; if(!file) return;
+      try{
+        const buf = await file.arrayBuffer();
+        const wbx = XLSX.read(buf, {type:'array', cellDates:false, cellNF:false});
+        const rows = XLSX.utils.sheet_to_json(wbx.Sheets[wbx.SheetNames[0]], {defval:'', raw:false});
+        const byId = new Map(), byCis = new Map();
+        for(const r of rows){
+          const info = { birth: visitBirth(r), addr: String(r.address||'').trim() };
+          if(!info.birth && !info.addr) continue;
+          const idno = String(r.idno||'').trim(), id93 = String(r.id93||'').trim();
+          if(idno) byId.set(idno, info);
+          if(id93) byCis.set(id93, info);
+        }
+        if(!byId.size && !byCis.size){ toast('檔案內找不到生日/地址欄（需衛生所查詢.xls）','bad'); return; }
+        let filled = 0;
+        for(const it of items){
+          const info = (it.idno && byId.get(it.idno)) || (it.cisid && byCis.get(it.cisid));
+          if(info){ if(!it.birth && info.birth){ it.birth = info.birth; } if(!it.addr && info.addr){ it.addr = info.addr; } filled++; }
+        }
+        // 同步補進名冊並存回雲端，下次免再拖
+        const roster = State.session.roster || [];
+        let rosterTouched = false;
+        for(const r of roster){
+          const info = (r.idno && byId.get(String(r.idno).trim())) || (r.cisid && byCis.get(String(r.cisid).trim()));
+          if(info){ if(!r.birth && info.birth){ r.birth = info.birth; rosterTouched = true; } if(!r.addr && info.addr){ r.addr = info.addr; rosterTouched = true; } }
+        }
+        if(rosterTouched){
+          fetch('/api/save_roster', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({date: State.session.date, roster}),
+          }).then(r=>r.json()).then(j=>{ if(j.ok) toast('名冊已補生日/地址並存回雲端','ok'); }).catch(()=>{});
+        }
+        refreshMiss();
+        toast(`已補齊 ${filled} 人資料`,'ok');
+      }catch(e){ toast('讀取失敗：'+e.message,'bad'); }
+    };
+    input.click();
+  };
+  d.querySelector('[data-act="0"]').onclick = close;
+  o.onclick = e => { if(e.target===o) close(); };
+  d.querySelector('[data-act="1"]').onclick = ()=>{
+    const sel = items.filter((_,i)=>picked.has(i));
+    if(!sel.length){ toast('未勾選任何個案','warn'); return; }
+    const examDate = (d.querySelector('#ref-exam-date')?.value || todayROCDot()).trim();
+    close();
+    openReferralPrint(sel, examDate);
+  };
 }
 
 /* ── 匯入檢驗報告：自動跳過前 N 列 metadata 找 header；支援腸/胃分開報告欄；跳過「未完成」 ── */

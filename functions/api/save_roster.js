@@ -17,7 +17,7 @@ export async function onRequestPost({ request, env }){
     const tabR = tabName('roster', date);
 
     await ensureTab(sheetId, tabR, token, titles, ROSTER_HEADER);
-    await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(tabR)}!A2:F:clear`, 'POST', {}, token);
+    await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(tabR)}!A2:H:clear`, 'POST', {}, token);
     const rows = roster.map(rosterToRow);
     if(rows.length){
       await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(tabR)}!A2:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,

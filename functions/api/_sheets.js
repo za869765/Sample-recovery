@@ -2,7 +2,7 @@
 // Pages Functions auto-skip files prefixed with _ so this is not an endpoint.
 
 export const HEADER = ['姓名','身分證字號','手機1','手機2','檢體狀態','報告狀態','待轉介','轉介未做腸鏡','發管日','送管日','取消追蹤','編號','來源'];
-export const ROSTER_HEADER = ['姓名','身分證字號','手機1','手機2','年齡','編號'];
+export const ROSTER_HEADER = ['姓名','身分證字號','手機1','手機2','年齡','編號','出生日期','地址'];
 export const GROUPS_HEADER = ['姓名','起','迄'];
 export const TAB_PREFIX = { fobt:'行醫腸篩', gastric:'行醫胃篩', roster:'行醫掛號', groups:'行醫分組' };
 
@@ -99,14 +99,14 @@ export async function ensureTab(sheetId, title, token, existingTitles, headerRow
 }
 
 export function rosterToRow(p){
-  return [p.name||'', p.idno||'', p.tel1||'', p.tel2||'', p.age||'', p.cisid||''];
+  return [p.name||'', p.idno||'', p.tel1||'', p.tel2||'', p.age||'', p.cisid||'', p.birth||'', p.addr||''];
 }
 export function rowToRoster(row){
   const v = i => (row[i]==null ? '' : String(row[i]));
-  return { name:v(0), idno:v(1), tel1:v(2), tel2:v(3), age:v(4), cisid:v(5) };
+  return { name:v(0), idno:v(1), tel1:v(2), tel2:v(3), age:v(4), cisid:v(5), birth:v(6), addr:v(7) };
 }
 export async function readRoster(sheetId, title, token){
-  const range = `${encodeURIComponent(title)}!A2:F`;
+  const range = `${encodeURIComponent(title)}!A2:H`;
   const r = await sheetsAPI(`/${sheetId}/values/${range}`, 'GET', null, token);
   return (r.values || []).map(rowToRoster);
 }

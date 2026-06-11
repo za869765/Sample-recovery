@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env }){
       await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(t)}!A2:M:clear`, 'POST', {}, token);
     }
     if (Array.isArray(roster)){
-      await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(tabR)}!A2:F:clear`, 'POST', {}, token);
+      await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(tabR)}!A2:H:clear`, 'POST', {}, token);
     }
 
     // build rows (dispatch 寫 MM/DD 不是民國 7 碼)

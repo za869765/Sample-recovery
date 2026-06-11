@@ -905,7 +905,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.51';
+const APP_VERSION = 'v0.3.52';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2886,8 +2886,8 @@ async function exportOverview(){
   // ── ExcelJS ──
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sample-recovery';
-  const ws = wb.addWorksheet('報告', { views:[{state:'frozen', ySplit:1}] });
-  ws.columns = [
+
+  const COLUMNS = [
     { header:'編號',   key:'cisid',      width:15 },
     { header:'姓名',   key:'name',       width:11 },
     { header:'身分證', key:'idno',       width:13 },
@@ -2900,7 +2900,6 @@ async function exportOverview(){
     { header:'腸報告', key:'fobtReport', width:15 },
     { header:'胃報告', key:'gasReport',  width:12 },
   ];
-
   const HEADER_FILL   = { type:'pattern', pattern:'solid', fgColor:{argb:'FF4A5563'} };
   const HEADER_FONT   = { bold:true, color:{argb:'FFFFFFFF'}, size:11 };
   const HEADER_ALIGN  = { vertical:'middle', horizontal:'center' };
@@ -2909,73 +2908,84 @@ async function exportOverview(){
   const GROUP_COLORS = ['FF5B7C99','FF7C5B99','FF99815B','FF5B997C','FF995B81','FF7C9959','FF607080'];
   const NUM_COLS = 11;
 
-  // 主 header row 樣式
-  const hr = ws.getRow(1);
-  hr.height = 24;
-  hr.eachCell({includeEmpty:false}, cell => {
-    cell.font = HEADER_FONT; cell.fill = HEADER_FILL;
-    cell.alignment = HEADER_ALIGN; cell.border = HEADER_BORDER;
-  });
-
-  // 寫入分組
-  const dataRowIdxs = [];
-  function addGroupHeader(text, colorHex){
-    const row = ws.addRow([text]);
-    ws.mergeCells(row.number, 1, row.number, NUM_COLS);
-    const cell = row.getCell(1);
-    cell.font = { bold:true, color:{argb:'FFFFFFFF'}, size:11 };
-    cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:colorHex} };
-    cell.alignment = { vertical:'middle', horizontal:'left', indent:1 };
-    row.height = 22;
+  // 一張工作表 = 主 header + 一或多個分組段（總表放全部段；護理師分頁放單段）
+  async function buildSheet(title, segments, tabColor){
+    const ws = wb.addWorksheet(title, { views:[{state:'frozen', ySplit:1}] });
+    if(tabColor) ws.properties.tabColor = { argb: tabColor };
+    ws.columns = COLUMNS;
+    const hr = ws.getRow(1);
+    hr.height = 24;
+    hr.eachCell({includeEmpty:false}, cell => {
+      cell.font = HEADER_FONT; cell.fill = HEADER_FILL;
+      cell.alignment = HEADER_ALIGN; cell.border = HEADER_BORDER;
+    });
+    const dataRowIdxs = [];
+    let blankRow = false;
+    for(const seg of segments){
+      if(!seg.rows.length) continue;
+      if(blankRow) ws.addRow([]);
+      const posCount = seg.rows.filter(r => /陽性/.test(r.fobtReport) || /陽性/.test(r.gasReport)).length;
+      const row = ws.addRow([`${seg.label}　${seg.rows.length} 人　異常 ${posCount}`]);
+      ws.mergeCells(row.number, 1, row.number, NUM_COLS);
+      const cell = row.getCell(1);
+      cell.font = { bold:true, color:{argb:'FFFFFFFF'}, size:11 };
+      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:seg.color} };
+      cell.alignment = { vertical:'middle', horizontal:'left', indent:1 };
+      row.height = 22;
+      for(const r of seg.rows){
+        ws.addRow(r);
+        dataRowIdxs.push(ws.rowCount);
+      }
+      blankRow = true;
+    }
+    // 套用 data row 樣式 (skip group header rows)
+    for(const idx of dataRowIdxs){
+      const row = ws.getRow(idx);
+      row.height = 18;
+      row.eachCell({includeEmpty:true}, cell => {
+        cell.border = DATA_BORDER;
+        cell.alignment = { vertical:'middle' };
+      });
+      for(const ci of [6,7]){
+        const cc = row.getCell(ci);
+        const cv = String(cc.value||'');
+        if(cv === '已回收'){ cc.font = { color:{argb:'FF137333'}, bold:true }; cc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE6F4EA'} }; }
+        else if(cv === '退掛'){ cc.font = { color:{argb:'FFB06000'} }; cc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFEEED4'} }; }
+        else if(cv === '未篩檢'){ cc.font = { color:{argb:'FF999999'} }; }
+        cc.alignment = { vertical:'middle', horizontal:'center' };
+      }
+      for(const ci of [10,11]){
+        const rc = row.getCell(ci);
+        const rv = String(rc.value||'');
+        if(/陽性/.test(rv)){ rc.font = { color:{argb:'FFC5221F'}, bold:true }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFCE8E6'} }; }
+        else if(/陰性/.test(rv)){ rc.font = { color:{argb:'FF1A5390'} }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE8F0FE'} }; }
+      }
+    }
+    await ws.protect('', { selectLockedCells:true, selectUnlockedCells:true });
   }
-  let blankRow = false;
+
+  // 段定義（總表與護理師分頁共用同一份）
+  const segs = [];
   for(let i=0; i<buckets.length; i++){
     const b = buckets[i];
     if(!b.rows.length) continue;
-    if(blankRow) ws.addRow([]);
-    const posCount = b.rows.filter(r => /陽性/.test(r.fobtReport) || /陽性/.test(r.gasReport)).length;
     const range = `${String(b.from).padStart(3,'0')}–${String(b.to).padStart(3,'0')}`;
-    addGroupHeader(`${b.name}　${range}　${b.rows.length} 人　異常 ${posCount}`, GROUP_COLORS[i % GROUP_COLORS.length]);
-    for(const r of b.rows){
-      ws.addRow(r);
-      dataRowIdxs.push(ws.rowCount);
-    }
-    blankRow = true;
+    segs.push({ name:b.name, label:`${b.name}　${range}`, color:GROUP_COLORS[i % GROUP_COLORS.length], rows:b.rows });
   }
   if(ungrouped.length){
-    if(blankRow) ws.addRow([]);
-    const posCount = ungrouped.filter(r => /陽性/.test(r.fobtReport) || /陽性/.test(r.gasReport)).length;
-    addGroupHeader(`其他（衛生所外）　${ungrouped.length} 人　異常 ${posCount}`, GROUP_COLORS[6]);
-    for(const r of ungrouped){
-      ws.addRow(r);
-      dataRowIdxs.push(ws.rowCount);
-    }
+    segs.push({ name:'其他（衛生所外）', label:'其他（衛生所外）', color:GROUP_COLORS[6], rows:ungrouped });
   }
 
-  // 套用 data row 樣式 (skip group header rows)
-  for(const idx of dataRowIdxs){
-    const row = ws.getRow(idx);
-    row.height = 18;
-    row.eachCell({includeEmpty:true}, cell => {
-      cell.border = DATA_BORDER;
-      cell.alignment = { vertical:'middle' };
-    });
-    for(const ci of [6,7]){
-      const cc = row.getCell(ci);
-      const cv = String(cc.value||'');
-      if(cv === '已回收'){ cc.font = { color:{argb:'FF137333'}, bold:true }; cc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE6F4EA'} }; }
-      else if(cv === '退掛'){ cc.font = { color:{argb:'FFB06000'} }; cc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFEEED4'} }; }
-      else if(cv === '未篩檢'){ cc.font = { color:{argb:'FF999999'} }; }
-      cc.alignment = { vertical:'middle', horizontal:'center' };
-    }
-    for(const ci of [10,11]){
-      const rc = row.getCell(ci);
-      const rv = String(rc.value||'');
-      if(/陽性/.test(rv)){ rc.font = { color:{argb:'FFC5221F'}, bold:true }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFCE8E6'} }; }
-      else if(/陰性/.test(rv)){ rc.font = { color:{argb:'FF1A5390'} }; rc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE8F0FE'} }; }
-    }
+  // 第一張全員總表「報告」+ 每位護理師（分組）獨立分頁
+  await buildSheet('報告', segs);
+  const usedNames = new Set(['報告']);
+  for(const seg of segs){
+    let base = String(seg.name||'').trim().replace(/[\\\/\?\*\[\]:]/g,'·').slice(0,28) || '未命名';
+    let title = base, n = 2;
+    while(usedNames.has(title)) title = `${base}(${n++})`;
+    usedNames.add(title);
+    await buildSheet(title, [seg], seg.color);
   }
-  await ws.protect('', { selectLockedCells:true, selectUnlockedCells:true });
 
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -2984,7 +2994,7 @@ async function exportOverview(){
   a.href = url; a.download = `報告檔_${State.session.date}.xlsx`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast(`已匯出 ${allRows.length} 人報告檔 (依轉介分工分組)`,'ok');
+  toast(`已匯出 ${allRows.length} 人報告檔 (總表 + ${segs.length} 分組分頁)`,'ok');
 }
 
 /* ── 匯出陽性清單 xlsx：腸/胃皆陽性個案，含聯絡資訊方便追蹤 ── */

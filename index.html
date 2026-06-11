@@ -910,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.57';
+const APP_VERSION = 'v0.3.58';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -4354,6 +4354,7 @@ function referralFormHTML(item, examDate, ply, issueDate){
   const C = REFERRAL_CLINIC;
   return `
   <div class="form" contenteditable="true" spellcheck="false">
+    <div class="f-corner">${esc(String(item.cisid).slice(-4))}</div>
     <div class="f-head">
       <div class="f-title">全民健康保險（<b class="ink">${esc(C.name)} ${C.code}</b>）轉診單（轉診至<span class="bl" style="min-width:42mm"></span>院所）</div>
       <div class="f-line">保險醫事服務機構代號：</div>
@@ -4416,7 +4417,7 @@ function referralFormHTML(item, examDate, ply, issueDate){
             </tr></table>
             <table class="t"><tr>
               <td class="lab" style="width:24mm">建議轉診<br>院所科別</td>
-              <td style="width:62mm"><span class="refbox">醫院　<b class="ink" style="font-size:13pt">${esc(C.referDept)}</b>　醫師</span></td>
+              <td style="width:86mm"><span class="refbox"><span class="bl" style="min-width:26mm"></span>醫院　<b class="ink" style="font-size:13pt">${esc(C.referDept)}</b>　<span class="bl" style="min-width:20mm"></span>醫師</span></td>
               <td class="lab" style="width:26mm">轉診院所地址<br>及專線電話</td>
               <td>地址：<br>電話：</td>
             </tr></table>
@@ -4464,10 +4465,11 @@ function openReferralPrint(items, examDate, issueDate){
 @page{size:A4 portrait;margin:8mm}
 *{box-sizing:border-box}
 body{font-family:"Microsoft JhengHei","PMingLiU",serif;font-size:10pt;color:#000;margin:0}
-.form{page-break-after:always;padding:2mm 0;outline:none}
+.form{page-break-after:always;padding:2mm 0;outline:none;position:relative}
 .form:last-child{page-break-after:auto}
+.f-corner{position:absolute;top:1mm;left:0;font-size:14pt;font-weight:700;letter-spacing:0.06em}
 .f-head{margin-bottom:1.5mm}
-.f-title{font-size:13.5pt;font-weight:700;letter-spacing:0.05em;margin-bottom:1mm}
+.f-title{font-size:13.5pt;font-weight:700;letter-spacing:0.05em;margin-bottom:1mm;text-align:center}
 .f-line{font-size:9.5pt;margin:0.8mm 0}
 .bl{display:inline-block;border-bottom:0.35mm solid #000;height:4.5mm;vertical-align:bottom}
 .f-flex{display:flex;gap:1.5mm}

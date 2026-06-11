@@ -910,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.53';
+const APP_VERSION = 'v0.3.54';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -4329,6 +4329,8 @@ function sexFromIdno(idno){
 }
 function referralFormHTML(item, examDate){
   const esc = escapeHTML;
+  // Sheets 數字化會吃掉手機開頭的 0，列印時補回
+  const mobileDisp = t => /^9\d{8}$/.test(String(t||'').trim()) ? '0'+String(t).trim() : String(t||'').trim();
   const sex = sexFromIdno(item.idno);
   const b = String(item.birth||'').split('/');
   const by=esc(b[0]||''), bm=esc(b[1]||''), bd=esc(b[2]||'');
@@ -4357,7 +4359,7 @@ function referralFormHTML(item, examDate){
             </tr></table>
             <table class="t"><tr>
               <td class="lab" style="width:17mm">聯絡電話</td>
-              <td style="width:42mm">住家：<b class="ink">${esc(item.tel1)}</b><br>手機：<b class="ink">${esc(item.tel2)}</b></td>
+              <td style="width:42mm">住家：<b class="ink">${esc(mobileDisp(item.tel1))}</b><br>手機：<b class="ink">${esc(mobileDisp(item.tel2))}</b></td>
               <td class="lab" style="width:17mm">聯絡地址</td>
               <td class="val">${esc(item.addr)}</td>
             </tr></table>

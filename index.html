@@ -905,7 +905,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.50';
+const APP_VERSION = 'v0.3.51';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -4309,18 +4309,27 @@ async function importReport(){
       const findIdx = (...keys) => headers.findIndex(h => keys.some(k => String(h).toLowerCase().includes(k.toLowerCase())));
       const idIdx   = findIdx('病患身份證','身分證','身份證','idno','id_no');
       const cisIdx  = findIdx('cisid','病歷號','id93','編號','掛號','序號');
-      let fobtIdx  = findIdx('ng/ml','fobt','fit','潛血');
-      let gasIdx   = findIdx('hpag','hpsa','幽門','pylori');
       const genIdx = findIdx('報告','結果','判讀');
-      if(fobtIdx<0 || gasIdx<0){
-        for(let i=0; i<hIdx; i++){
-          for(let j=0; j<aoa[i].length; j++){
-            const v = String(aoa[i][j]||'').trim().toLowerCase();
-            if(fobtIdx<0 && (/^85$/.test(v) || /腸|fobt|fit/i.test(v))) fobtIdx = j;
-            if(gasIdx<0 && (/hpag|hpsa|幽門|pylori|胃/i.test(v))) gasIdx = j;
-          }
+      const isPlaceholder = s => !s || /^(未完成|未做|pending|na|n\/a|-+|—|–)$/i.test(String(s).trim());
+      // 腸/胃報告欄偵測：候選 = header 關鍵字 + header 上方檢驗項目列 (FOBT/85/HPAG…)。
+      // 同類多欄時 (例: FOBT 與 85 兩欄 header 都是 ng/ml、其一整欄空) 選實際有資料者
+      const countData = j => dataRows.reduce((n,r)=> n + (isPlaceholder(String(r[j]??'').trim()) ? 0 : 1), 0);
+      const candCols = (headerKeys, metaRe) => {
+        const set = new Set();
+        headers.forEach((h,j)=>{ const s=String(h).toLowerCase(); if(headerKeys.some(k=>s.includes(k))) set.add(j); });
+        for(let i=0; i<hIdx; i++) for(let j=0; j<aoa[i].length; j++){
+          if(metaRe.test(String(aoa[i][j]||'').trim())) set.add(j);
         }
-      }
+        return [...set];
+      };
+      const pickDataCol = cols => {
+        if(!cols.length) return -1;
+        let best = cols[0], bestN = -1;
+        for(const j of cols){ const n = countData(j); if(n>bestN){ bestN=n; best=j; } }
+        return best;
+      };
+      const fobtIdx = pickDataCol(candCols(['ng/ml','fobt','fit','潛血'], /^85$|腸|fobt|fit|潛血/i));
+      const gasIdx  = pickDataCol(candCols(['hpag','hpsa','幽門','pylori'], /hpag|hpsa|幽門|pylori|胃/i));
       if(idIdx<0 && cisIdx<0){
         return dialog(`<h3>無法匯入</h3><p>header 列 (row ${hIdx+1}) 找不到身分證或編號欄。檔案欄位:</p><pre style="background:#f5f5f5;padding:8px;font-size:12px;max-height:200px;overflow:auto;white-space:pre-wrap">${escapeHTML(headers.filter(h=>h).join(', '))}</pre>`, [{label:'關閉',primary:true}]);
       }
@@ -4332,7 +4341,6 @@ async function importReport(){
         if(p.idno)  byId.set(String(p.idno).trim(), p);
         if(p.cisid) byCis.set(String(p.cisid).trim(), p);
       }
-      const isPlaceholder = s => !s || /^(未完成|未做|pending|na|n\/a|-+|—|–)$/i.test(String(s).trim());
       const buckets = { fobt: new Map(), gastric: new Map() };
       let matchedPersons = 0, unmatched = 0;
       const unmatchedSamples = [];

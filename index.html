@@ -910,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.55';
+const APP_VERSION = 'v0.3.56';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -4327,8 +4327,15 @@ function sexFromIdno(idno){
   if(c==='2'||c==='9') return 'F';
   return '';
 }
-function referralFormHTML(item, examDate){
+// 一式三聯：側標文字/顏色各異，表單內容相同
+const REFERRAL_PLIES = {
+  1: { label:'第一聯：接受轉診（轉入）醫院、診所留存（藍色）', color:'#1a4f9c' },
+  2: { label:'第二聯：接受轉診（轉入）醫院、診所留存回覆轉出醫院、診所（紅色）', color:'#c5221f' },
+  3: { label:'第三聯：原診療醫院、診所留存（白色）', color:'#000' },
+};
+function referralFormHTML(item, examDate, ply){
   const esc = escapeHTML;
+  const plyInfo = REFERRAL_PLIES[ply] || REFERRAL_PLIES[1];
   // Sheets 數字化會吃掉手機開頭的 0，列印時補回
   const mobileDisp = t => /^9\d{8}$/.test(String(t||'').trim()) ? '0'+String(t).trim() : String(t||'').trim();
   const sex = sexFromIdno(item.idno);
@@ -4442,13 +4449,14 @@ function referralFormHTML(item, examDate){
           </div>
         </div>
       </div>
-      <div class="f-side">第一聯：接受轉診（轉入）醫院、診所留存</div>
+      <div class="f-side" style="color:${plyInfo.color}">${plyInfo.label}</div>
     </div>
     <div class="f-foot"><span>※以上欄位均屬必填，如無則填無</span><span>※本轉診單限使用乙次</span></div>
   </div>`;
 }
 function openReferralPrint(items, examDate){
-  const forms = items.map(it => referralFormHTML(it, examDate)).join('\n');
+  // 每人一式三聯（3 頁），同人三聯連續排列方便配紙
+  const forms = items.flatMap(it => [1,2,3].map(ply => referralFormHTML(it, examDate, ply))).join('\n');
   const html = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8">
 <title>轉診單_${State.session.date}</title>
 <style>
@@ -4481,8 +4489,8 @@ td.val{font-weight:700;font-size:11pt}
 @media print{.bar{display:none}}
 </style></head><body>
 <div class="bar">
-  <button onclick="window.print()" style="padding:6px 14px;font-size:13px">🖨 列印 ${items.length} 張</button>
-  <span style="margin-left:12px;color:#666">每人一頁 · 點擊表單任何欄位可直接修改後再列印</span>
+  <button onclick="window.print()" style="padding:6px 14px;font-size:13px">🖨 列印 ${items.length*3} 張（${items.length} 人 × 3 聯）</button>
+  <span style="margin-left:12px;color:#666">每人一式三聯 · 點擊表單任何欄位可直接修改後再列印</span>
 </div>
 ${forms}
 </body></html>`;
@@ -4532,7 +4540,7 @@ async function openReferralDialog(){
   }).join('');
   d.innerHTML = `
     <h3>套印轉診單</h3>
-    <p style="font-size:12.5px;color:#666;margin:6px 0">陽性 ${items.length} 人，每人一頁 A4 健保轉診單（${escapeHTML(REFERRAL_CLINIC.name)}）。產生後可在列印頁直接點擊修改任何欄位。</p>
+    <p style="font-size:12.5px;color:#666;margin:6px 0">陽性 ${items.length} 人，每人<b>一式三聯</b>（第一聯藍 / 第二聯紅 / 第三聯白，各 1 頁 A4）健保轉診單（${escapeHTML(REFERRAL_CLINIC.name)}）。產生後可在列印頁直接點擊修改任何欄位。</p>
     <div style="max-height:240px;overflow:auto;border:1px solid #e3e3e3;border-radius:6px;padding:4px 8px;margin:6px 0">${listHtml}</div>
     <div style="display:flex;align-items:center;gap:8px;margin:8px 0;font-size:13px">
       <span>檢查日期（報告日期）</span>

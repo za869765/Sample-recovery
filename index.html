@@ -910,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.61';
+const APP_VERSION = 'v0.3.62';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -4313,7 +4313,7 @@ function openWithdrawDialog(){
 
 /* ── 健保轉診單套印：陽性個案一人一頁 A4 整張重印，列印前可直接點擊修改任何欄位 ── */
 const REFERRAL_CLINIC = {
-  name:'佳里區衛生所', code:'2341050015',
+  name:'佳里區衛生所', nameFull:'臺南市佳里區衛生所', code:'2341050015',
   addr:'台南市佳里區進學路159號',
   tel:'(06)7213709',      // 傳真號碼/電子信箱 欄
   telDoctor:'(06)7224106', // 診治醫師列的聯絡電話
@@ -4359,8 +4359,8 @@ function referralFormHTML(item, ply, opts){
   <div class="form" contenteditable="true" spellcheck="false">
     <div class="f-corner">${esc(String(item.cisid).slice(-4))}</div>
     <div class="f-head">
-      <div class="f-title">全民健康保險（<b class="ink">${esc(C.name)} ${C.code}</b>）轉診單（轉診至<span class="bl" style="min-width:42mm"></span>院所）</div>
-      <div class="f-line">保險醫事服務機構代號：</div>
+      <div class="f-title">全民健康保險　<b class="ink">${esc(C.nameFull)}</b>　轉診單（轉診至<span class="bl" style="min-width:42mm"></span>院所）</div>
+      <div class="f-line">保險醫事服務機構代號：<b class="ink">${C.code}</b></div>
       <div class="f-line">本人已了解衛生所轉診事項，並同意衛生所調閱相關檢查資料：<span class="bl" style="min-width:60mm"></span>（請簽名）</div>
     </div>
     <div class="f-flex">

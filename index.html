@@ -910,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.54';
+const APP_VERSION = 'v0.3.55';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -4334,10 +4334,15 @@ function referralFormHTML(item, examDate){
   const sex = sexFromIdno(item.idno);
   const b = String(item.birth||'').split('/');
   const by=esc(b[0]||''), bm=esc(b[1]||''), bd=esc(b[2]||'');
+  // 病情摘要 / 報告 / 轉診目的加註 — 格式照衛生所手寫範本（腸陽、胃陽、雙陽三款）
   const summary = [
-    item.fobtPos ? `FOBT(+)　${esc(item.fobtVal)} ng/mL` : '',
+    item.fobtPos ? '糞便潛血檢查報告異常' : '',
     item.gasPos ? 'HPSA(+)' : '',
-  ].filter(Boolean).join('　、　');
+  ].filter(Boolean).join('<br>');
+  const reportLine = item.fobtPos
+    ? `檢驗結果陽性數值:${esc(item.fobtVal)} (Eiken)` + (item.gasPos ? '，HPSA陽性' : '')
+    : '陽性';
+  const purposeExtra = item.fobtPos ? '<br><b class="ink">☑轉介其他試辦計畫或方案　癌症治療－大腸癌</b>' : '';
   const C = REFERRAL_CLINIC;
   return `
   <div class="form" contenteditable="true" spellcheck="false">
@@ -4371,12 +4376,12 @@ function referralFormHTML(item, examDate){
               <td><span class="lab2">B.診斷</span>　ICD-9-CM　病名　1.(主診斷)<span class="bl" style="min-width:40mm"></span>　2.<span class="bl" style="min-width:30mm"></span></td>
             </tr></table>
             <table class="t"><tr>
-              <td style="width:55%"><span class="lab2">C.檢查及治療摘要</span><br>1.最近一次檢查結果<br>日期：<b class="ink">${esc(examDate)}</b><br>報告：<b class="ink">陽性</b></td>
+              <td style="width:55%"><span class="lab2">C.檢查及治療摘要</span><br>1.最近一次檢查結果<br>日期：<b class="ink">${esc(examDate)}</b><br>報告：<b class="ink">${reportLine}</b></td>
               <td style="vertical-align:top">2.最近一次用藥或手術名稱<br>日期：</td>
             </tr></table>
             <table class="t"><tr>
               <td class="lab" style="width:17mm">轉診目的</td>
-              <td>1.☐急診治療　2.☐住院治療　3.☐門診治療　4.☐進一步檢查，檢查項目：<span class="bl" style="min-width:24mm"></span><br>5.☐轉回轉出或適當之院所繼續追蹤　6.☐其他</td>
+              <td>1.☐急診治療　2.☐住院治療　3.☐門診治療　4.☐進一步檢查，檢查項目：<span class="bl" style="min-width:24mm"></span><br>5.☐轉回轉出或適當之院所繼續追蹤　6.☐其他${purposeExtra}</td>
             </tr></table>
             <table class="t"><tr>
               <td class="lab" style="width:17mm">院所住址</td>

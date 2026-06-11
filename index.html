@@ -910,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.62';
+const APP_VERSION = 'v0.3.63';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -3065,21 +3065,25 @@ async function exportPositiveList(kind){
     cell.font = HEADER_FONT; cell.fill = HEADER_FILL;
     cell.alignment = HEADER_ALIGN; cell.border = HEADER_BORDER;
   });
+  // 整列底色依類別：胃=藍 / 腸=黃 / 腸+胃=綠
+  const KIND_FILL = {
+    '胃':    { type:'pattern', pattern:'solid', fgColor:{argb:'FFB4C6E7'} },
+    '腸':    { type:'pattern', pattern:'solid', fgColor:{argb:'FFFFE699'} },
+    '腸+胃': { type:'pattern', pattern:'solid', fgColor:{argb:'FFC6EFCE'} },
+  };
   for(let r=2; r<=ws.rowCount; r++){
     const row = ws.getRow(r);
     row.height = 18;
+    const kindFill = KIND_FILL[String(row.getCell(6).value||'').trim()];
     row.eachCell({includeEmpty:true}, cell => {
       cell.border = DATA_BORDER;
       cell.alignment = { vertical:'middle' };
+      if(kindFill) cell.fill = kindFill;
     });
-    // 報告欄 (col 7, 8) 陽性紅字
+    // 報告欄 (col 7, 8) 陽性紅字（底色用類別色）
     for(const ci of [7,8]){
       const cc = row.getCell(ci);
-      const cv = String(cc.value||'');
-      if(/陽性/.test(cv)){
-        cc.font = { color:{argb:'FFC5221F'}, bold:true };
-        cc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFCE8E6'} };
-      }
+      if(/陽性/.test(String(cc.value||''))) cc.font = { color:{argb:'FFC5221F'}, bold:true };
     }
   }
   ws.autoFilter = { from:{row:1,column:1}, to:{row:ws.rowCount,column:8} };

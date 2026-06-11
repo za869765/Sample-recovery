@@ -910,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.60';
+const APP_VERSION = 'v0.3.61';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -4314,7 +4314,9 @@ function openWithdrawDialog(){
 /* ── 健保轉診單套印：陽性個案一人一頁 A4 整張重印，列印前可直接點擊修改任何欄位 ── */
 const REFERRAL_CLINIC = {
   name:'佳里區衛生所', code:'2341050015',
-  addr:'台南市佳里區進學路159號', tel:'(06)7213709',
+  addr:'台南市佳里區進學路159號',
+  tel:'(06)7213709',      // 傳真號碼/電子信箱 欄
+  telDoctor:'(06)7224106', // 診治醫師列的聯絡電話
   dept:'內科', referDept:'肝膽腸胃科',
 };
 function todayROCDot(){
@@ -4333,8 +4335,9 @@ const REFERRAL_PLIES = {
   2: { label:'第二聯：接受轉診（轉入）醫院、診所留存回覆轉出醫院、診所（紅色）', color:'#c5221f' },
   3: { label:'第三聯：原診療醫院、診所留存（白色）', color:'#000' },
 };
-function referralFormHTML(item, examDate, ply, issueDate){
+function referralFormHTML(item, ply, opts){
   const esc = escapeHTML;
+  const { examDate, issueDate, doctor } = opts || {};
   const plyInfo = REFERRAL_PLIES[ply] || REFERRAL_PLIES[1];
   const issue = issueDate || todayROCDot();
   // Sheets 數字化會吃掉手機開頭的 0，列印時補回
@@ -4400,13 +4403,13 @@ function referralFormHTML(item, examDate, ply, issueDate){
             </tr></table>
             <table class="t"><tr>
               <td class="lab" style="width:17mm">診治醫師<br>姓名</td>
-              <td style="width:30mm"></td>
+              <td class="val" style="width:30mm">${esc(doctor||'')}</td>
               <td class="lab" style="width:11mm">科別</td>
               <td class="val" style="width:20mm">${esc(C.dept)}</td>
               <td class="lab" style="width:17mm">聯絡電話</td>
-              <td class="val">${esc(C.tel)}</td>
-              <td class="lab" style="width:24mm">醫師簽章</td>
-              <td style="width:26mm"></td>
+              <td class="val">${esc(C.telDoctor)}</td>
+              <td class="lab" style="width:18mm">醫師簽章</td>
+              <td style="width:42mm"></td>
             </tr></table>
             <table class="t"><tr>
               <td class="lab" style="width:17mm">開單日期</td>
@@ -4456,9 +4459,9 @@ function referralFormHTML(item, examDate, ply, issueDate){
     <div class="f-foot"><span>※以上欄位均屬必填，如無則填無</span><span>※本轉診單限使用乙次</span></div>
   </div>`;
 }
-function openReferralPrint(items, examDate, issueDate){
+function openReferralPrint(items, opts){
   // 每人一式三聯（3 頁），同人三聯連續排列方便配紙
-  const forms = items.flatMap(it => [1,2,3].map(ply => referralFormHTML(it, examDate, ply, issueDate))).join('\n');
+  const forms = items.flatMap(it => [1,2,3].map(ply => referralFormHTML(it, ply, opts))).join('\n');
   const html = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8">
 <title>轉診單_${State.session.date}</title>
 <style>
@@ -4550,6 +4553,8 @@ async function openReferralDialog(){
       <input type="text" class="rs-input" id="ref-exam-date" value="${todayROCDot()}" style="width:90px;text-align:center">
       <span style="margin-left:10px">開單日期</span>
       <input type="text" class="rs-input" id="ref-issue-date" value="${todayROCDot()}" style="width:90px;text-align:center">
+      <span style="margin-left:10px">診治醫師</span>
+      <input type="text" class="rs-input" id="ref-doctor" value="" placeholder="選填" style="width:90px;text-align:center">
     </div>
     <div id="ref-miss-row" style="display:${missingCount()?'flex':'none'};align-items:center;gap:8px;background:#fff7e6;border:1px solid #f0d9a8;border-radius:6px;padding:6px 10px;font-size:12px;margin:6px 0">
       <span style="flex:1"><span id="ref-miss-n">${missingCount()}</span> 人缺出生日期/地址（名冊未含此欄位的舊場次）。可拖入本場「衛生所查詢.xls」一次補齊並存回雲端。</span>
@@ -4625,8 +4630,9 @@ async function openReferralDialog(){
     if(!sel.length){ toast('未勾選任何個案','warn'); return; }
     const examDate = (d.querySelector('#ref-exam-date')?.value || todayROCDot()).trim();
     const issueDate = (d.querySelector('#ref-issue-date')?.value || todayROCDot()).trim();
+    const doctor = (d.querySelector('#ref-doctor')?.value || '').trim();
     close();
-    openReferralPrint(sel, examDate, issueDate);
+    openReferralPrint(sel, { examDate, issueDate, doctor });
   };
 }
 

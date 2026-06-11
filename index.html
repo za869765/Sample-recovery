@@ -905,7 +905,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.49';
+const APP_VERSION = 'v0.3.50';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1502,12 +1502,26 @@ async function loadRoster(){
     if(j.ok && Array.isArray(j.roster)) State.session.roster = j.roster;
   }catch{ /* 舊場次沒 roster sheet 是常態，匯出時會 fallback 拖檔 */ }
 }
+async function fetchGroupsFromCloud(date){
+  const r = await fetch(`/api/groups?date=${encodeURIComponent(date)}`);
+  const j = await r.json();
+  if(!j.ok || !Array.isArray(j.groups)) throw new Error(j.error||'load failed');
+  return j.groups;
+}
 async function loadGroups(){
-  try{
-    const r = await fetch(`/api/groups?date=${encodeURIComponent(State.session.date)}`);
-    const j = await r.json();
-    if(j.ok && Array.isArray(j.groups)) State.session.groups = j.groups;
-  }catch{ /* 沒設定就用 default */ }
+  const sess = State.session;
+  for(let i=0; i<3; i++){
+    try{
+      sess.groups = await fetchGroupsFromCloud(sess.date);
+      sess.groupsLoadFailed = false;
+      return;
+    }catch(e){
+      if(i < 2){ await new Promise(res => setTimeout(res, 800*(i+1))); continue; }
+      // 雲端可能有設定但讀不到：標記失敗，dialog/匯出會再現抓或警告，避免被誤當「沒設定」
+      sess.groupsLoadFailed = true;
+      toast('雲端分組設定載入失敗，暫以預設分組顯示','warn');
+    }
+  }
 }
 const DEFAULT_GROUPS = [
   { name:'李伽蕖', from:1,   to:47  },
@@ -1525,6 +1539,14 @@ function getActiveGroups(){
 /* 分組設定 dialog */
 async function openGroupsDialog(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
+  // 開 dialog 時現抓雲端，避免 openSession 偶發載入失敗被誤當「沒設定」而顯示預設值
+  let cloudFailed = false;
+  setSync('syncing','讀分組設定…');
+  try{
+    State.session.groups = await fetchGroupsFromCloud(State.session.date);
+    State.session.groupsLoadFailed = false;
+    setSync('ok','');
+  }catch(e){ cloudFailed = true; setSync('idle',''); }
   const current = getActiveGroups().map(g => ({...g}));
   // 推算本場 cisid 末 3 碼最大值，給使用者參考
   const merged = State.session.merged || [];
@@ -1567,9 +1589,15 @@ async function openGroupsDialog(){
     });
   }
 
+  const warnHTML = cloudFailed ? `
+    <div id="groups-warn" style="background:#fdecea;border:1px solid #f5c6cb;color:#a33;border-radius:6px;padding:8px 10px;font-size:12px;margin:6px 0;display:flex;align-items:center;gap:8px">
+      <span style="flex:1">⚠️ 雲端分組設定載入失敗，以下顯示的可能不是雲端最新值；按「儲存到雲端」會覆蓋雲端設定。</span>
+      <button class="rs-btn is-sm" id="groups-retry">重試載入</button>
+    </div>` : '';
   const body = `
     <h3>異常轉介分組設定</h3>
     <p style="font-size:12px;color:#666;margin:6px 0">本場 ${State.session.date} 衛生所最大編號末 3 碼：<b>${String(maxN).padStart(3,'0')}</b>。設定後存雲端，下次開此場自動載入。</p>
+    ${warnHTML}
     <table style="width:100%;border-collapse:collapse;font-size:13px;margin:6px 0">
       <thead><tr style="background:#f5f5f5">
         <th style="text-align:left;padding:4px 8px">護理師</th>
@@ -1586,56 +1614,73 @@ async function openGroupsDialog(){
       <button class="rs-btn is-sm" id="groups-reset">套用預設 (6 段)</button>
     </div>`;
 
-  const result = await new Promise(resolve => {
-    const d = document.getElementById('dialog');
-    const o = document.getElementById('overlay');
-    d.innerHTML = body + `<div class="rs-dialog-actions">
-      <button class="rs-btn" data-act="0">取消</button>
-      <button class="rs-btn is-primary" data-act="1">儲存到雲端</button>
-    </div>`;
-    o.classList.add('is-show');
+  const d = document.getElementById('dialog');
+  const o = document.getElementById('overlay');
+  d.innerHTML = body + `<div class="rs-dialog-actions">
+    <button class="rs-btn" data-act="0">取消</button>
+    <button class="rs-btn is-primary" data-act="1">儲存到雲端</button>
+  </div>`;
+  o.classList.add('is-show');
+  render();
+  document.getElementById('groups-add').onclick = ()=>{
+    const last = working[working.length-1];
+    const nextFrom = last ? (last.to+1) : 1;
+    working.push({ name:'', from:nextFrom, to:Math.min(nextFrom+46, maxN||nextFrom) });
     render();
-    document.getElementById('groups-add').onclick = ()=>{
-      const last = working[working.length-1];
-      const nextFrom = last ? (last.to+1) : 1;
-      working.push({ name:'', from:nextFrom, to:Math.min(nextFrom+46, maxN||nextFrom) });
+  };
+  document.getElementById('groups-fill').onclick = ()=>{
+    if(working.length){ working[working.length-1].to = maxN; render(); }
+  };
+  document.getElementById('groups-reset').onclick = ()=>{
+    working = DEFAULT_GROUPS.map(g => ({...g}));
+    render();
+  };
+  const retryBtn = document.getElementById('groups-retry');
+  if(retryBtn) retryBtn.onclick = async ()=>{
+    retryBtn.disabled = true; retryBtn.textContent = '載入中…';
+    try{
+      const g = await fetchGroupsFromCloud(State.session.date);
+      State.session.groups = g;
+      State.session.groupsLoadFailed = false;
+      working = (g.length ? g : DEFAULT_GROUPS).map(x => ({...x}));
+      document.getElementById('groups-warn').style.display = 'none';
       render();
-    };
-    document.getElementById('groups-fill').onclick = ()=>{
-      if(working.length){ working[working.length-1].to = maxN; render(); }
-    };
-    document.getElementById('groups-reset').onclick = ()=>{
-      working = DEFAULT_GROUPS.map(g => ({...g}));
-      render();
-    };
-    d.querySelectorAll('[data-act]').forEach(b => b.onclick = ()=>{
-      o.classList.remove('is-show');
-      resolve(parseInt(b.dataset.act,10));
-    });
-    o.onclick = e => { if(e.target===o){ o.classList.remove('is-show'); resolve(-1); } };
-  });
-  if(result !== 1) return;
-
-  const clean = working
-    .map(g => ({ name:String(g.name||'').trim(), from:parseInt(g.from,10)||0, to:parseInt(g.to,10)||0 }))
-    .filter(g => g.name && g.to>=g.from);
-  if(!clean.length){ toast('沒有有效分組可儲存','warn'); return; }
-
-  setSync('syncing','儲存分組設定…');
-  try{
-    const r = await fetch('/api/save_groups', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ date: State.session.date, groups: clean }),
-    });
-    const j = await r.json();
-    if(!j.ok) throw new Error(j.error||'save failed');
-    State.session.groups = clean;
-    setSync('ok','已同步');
-    toast(`分組設定已儲存 (${clean.length} 段)`,'ok');
-  }catch(e){
-    setSync('bad','儲存失敗');
-    toast('儲存失敗：'+e.message,'bad');
-  }
+      toast('已載入雲端分組設定','ok');
+    }catch(e){
+      retryBtn.disabled = false; retryBtn.textContent = '重試載入';
+      toast('仍載入失敗：'+e.message,'bad');
+    }
+  };
+  const close = ()=> o.classList.remove('is-show');
+  d.querySelector('[data-act="0"]').onclick = close;
+  o.onclick = e => { if(e.target===o) close(); };
+  const saveBtn = d.querySelector('[data-act="1"]');
+  saveBtn.onclick = async ()=>{
+    const clean = working
+      .map(g => ({ name:String(g.name||'').trim(), from:parseInt(g.from,10)||0, to:parseInt(g.to,10)||0 }))
+      .filter(g => g.name && g.to>=g.from);
+    if(!clean.length){ toast('沒有有效分組可儲存','warn'); return; }
+    saveBtn.disabled = true; saveBtn.textContent = '儲存中…';
+    setSync('syncing','儲存分組設定…');
+    try{
+      const r = await fetch('/api/save_groups', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ date: State.session.date, groups: clean }),
+      });
+      const j = await r.json();
+      if(!j.ok) throw new Error(j.error||'save failed');
+      State.session.groups = clean;
+      State.session.groupsLoadFailed = false;
+      setSync('ok','已同步');
+      toast(`分組設定已儲存 (${clean.length} 段)`,'ok');
+      close();
+    }catch(e){
+      // 失敗不關 dialog，保留使用者輸入，可修正後重存
+      setSync('bad','儲存失敗');
+      toast('儲存失敗：'+e.message,'bad');
+      saveBtn.disabled = false; saveBtn.textContent = '儲存到雲端';
+    }
+  };
 }
 async function loadSessionData(tab){
   setSync('syncing','讀取 '+tab);
@@ -2700,6 +2745,16 @@ async function exportCasesXlsx(){
 /* ── 匯出報告檔 xlsx：以衛生所查詢為基底+依異常轉介分組+顏色標記+sheet 保護 ── */
 async function exportOverview(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
+  // 分組設定先前載入失敗的話，匯出前重抓一次；仍失敗就中止，避免報告用錯分組
+  if(State.session.groupsLoadFailed){
+    try{
+      State.session.groups = await fetchGroupsFromCloud(State.session.date);
+      State.session.groupsLoadFailed = false;
+    }catch(e){
+      toast('雲端分組設定載入失敗，已中止匯出（避免報告用錯分組），請稍後再試','bad');
+      return;
+    }
+  }
   let base = null;
   // 優先用 openSession 時載入的 roster cache，沒有再打 API
   let rosterRaw = State.session.roster;

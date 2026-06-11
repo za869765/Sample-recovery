@@ -910,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.58';
+const APP_VERSION = 'v0.3.59';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -4378,7 +4378,7 @@ function referralFormHTML(item, examDate, ply, issueDate){
               <td class="val">${esc(item.addr)}</td>
             </tr></table>
             <table class="t"><tr>
-              <td style="width:55%;vertical-align:top"><span class="lab2">A.病情摘要　主訴及簡短病史</span><div class="val" style="min-height:9mm;padding-top:1mm">${summary}</div></td>
+              <td style="width:55%;vertical-align:top"><span class="lab2">A.病情摘要　主訴及簡短病史</span><div style="min-height:9mm;padding-top:1mm;font-weight:700;font-size:13pt;letter-spacing:0.04em">${summary}</div></td>
               <td style="vertical-align:top"><span class="lab2">D.藥物過敏史：</span></td>
             </tr></table>
             <table class="t"><tr>
@@ -4390,7 +4390,7 @@ function referralFormHTML(item, examDate, ply, issueDate){
             </tr></table>
             <table class="t"><tr>
               <td class="lab" style="width:17mm">轉診目的</td>
-              <td>1.☐急診治療　2.☐住院治療　3.☐門診治療　4.☐進一步檢查，檢查項目：<span class="bl" style="min-width:24mm"></span><br>5.☐轉回轉出或適當之院所繼續追蹤　6.☐其他${purposeExtra}</td>
+              <td>1.☐急診治療　2.☐住院治療　${item.gasPos?'<b class="ink">3.☑門診治療</b>':'3.☐門診治療'}　4.☐進一步檢查，檢查項目：<span class="bl" style="min-width:24mm"></span><br>5.☐轉回轉出或適當之院所繼續追蹤　6.☐其他${purposeExtra}</td>
             </tr></table>
             <table class="t"><tr>
               <td class="lab" style="width:17mm">院所住址</td>

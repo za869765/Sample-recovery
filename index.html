@@ -910,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.64';
+const APP_VERSION = 'v0.3.65';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -3106,20 +3106,18 @@ function escapeHTML(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;',
    F = 45-75 FOBT 耗損 (手填，預設 0)
    H = 胃 完成 (全 gastric，含 1A03/1H01 單掛)
    J = 胃 耗損 (手填)
-   L = 非45-75 完成 (source='free' / subsidy)
-   N = 非45-75 耗損 (手填)
-   費用由 xlsx 公式自動算: E=D*70, G=F*35, I=H*150, K=J*20, M=L*70, O=N*40, P=E+G+I+K+M+O
+   ⚠️ 非45-75 FOBT（非預防 / free / 民族補助）不列入繳回款計算：
+      strip 不顯示、xlsx L5/M5/N5/O5 留空、小計不含。
+   費用由 xlsx 公式自動算: E=D*70, G=F*35, I=H*150, K=J*20, P=E+G+I+K
 */
 function computeReimburseStats(){
   if(!State.session) return null;
   const sub = State.subsidy || new Set();
-  const isFree = c => c.source==='free' || (!c.source && sub.has(c.cisid));
   const is6E   = c => c.source==='6E'   || (!c.source && !sub.has(c.cisid));
   const fobtArr = (State.session.cases.fobt||[]).filter(c => !c.cancel);
   const gastArr = (State.session.cases.gastric||[]).filter(c => !c.cancel);
   return {
     D: fobtArr.filter(c => is6E(c)   && c.status==='V').length,
-    L: fobtArr.filter(c => isFree(c) && c.status==='V').length,
     H: gastArr.filter(c => c.status==='V').length,
   };
 }
@@ -3129,16 +3127,15 @@ function updateReimburseStrip(){
   if(!el) return;
   if(!State.session){ el.innerHTML=''; return; }
   const s = computeReimburseStats();
-  const loss = State.reimburseLoss || {F:0, J:0, N:0};
-  const costD = s.D*70, costF = loss.F*35, costH = s.H*150, costJ = loss.J*20, costL = s.L*70, costN = loss.N*40;
-  const subtotal = costD + costF + costH + costJ + costL + costN;
+  const loss = State.reimburseLoss || {F:0, J:0};
+  const costD = s.D*70, costF = loss.F*35, costH = s.H*150, costJ = loss.J*20;
+  const subtotal = costD + costF + costH + costJ;
   const fmt = n => n.toLocaleString('en-US');
   el.innerHTML = `
     <span class="rs-reimburse-lbl">繳回款預覽</span>
     <span class="rs-reimburse-item" data-tip="45-75 FOBT 完成 × 70 元 / 人">FOBT 預防 <b>${s.D}</b><span class="cost">$${fmt(costD)}</span></span>
     <span class="rs-reimburse-item" data-tip="胃 完成 × 150 元 / 人">胃 <b>${s.H}</b><span class="cost">$${fmt(costH)}</span></span>
-    <span class="rs-reimburse-item" data-tip="非45-75 完成 × 70 元 / 人">FOBT 非預防 <b>${s.L}</b><span class="cost">$${fmt(costL)}</span></span>
-    <span class="rs-reimburse-item" data-tip="額外耗損試劑數（手填，預設 0），點下載按鈕修改">耗損 <b>${loss.F}+${loss.J}+${loss.N}</b><span class="cost">$${fmt(costF+costJ+costN)}</span></span>
+    <span class="rs-reimburse-item" data-tip="額外耗損試劑數（手填，預設 0），點下載按鈕修改">耗損 <b>${loss.F}+${loss.J}</b><span class="cost">$${fmt(costF+costJ)}</span></span>
     <span class="rs-reimburse-sub">小計 $${fmt(subtotal)}</span>
     <button class="rs-reimburse-dl" id="reimburse-dl-quick" data-tip="開啟 dialog 修改場次/耗損並下載 1:1 模板 xlsx">下載 xlsx</button>
   `;
@@ -3150,7 +3147,7 @@ async function openReimbursementDialog(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
   const s = computeReimburseStats();
   if(!s){ toast('無資料','warn'); return; }
-  const stored = State.reimburseLoss || {F:0, J:0, N:0, sessionNo:1};
+  const stored = State.reimburseLoss || {F:0, J:0, sessionNo:1};
   const dateROC = State.session.date;
 
   const body = `
@@ -3185,12 +3182,6 @@ async function openReimbursementDialog(){
           <td style="padding:6px;text-align:center"><input type="number" id="rb-J" class="rs-input" min="0" value="${stored.J||0}" style="width:60px;text-align:center"></td>
           <td style="padding:6px;text-align:center">20</td>
         </tr>
-        <tr><td style="padding:6px">非 45-75 FOBT（民族補助 / free）</td>
-          <td style="padding:6px;text-align:center"><b>${s.L}</b></td>
-          <td style="padding:6px;text-align:center">70</td>
-          <td style="padding:6px;text-align:center"><input type="number" id="rb-N" class="rs-input" min="0" value="${stored.N||0}" style="width:60px;text-align:center"></td>
-          <td style="padding:6px;text-align:center">40</td>
-        </tr>
       </tbody>
     </table>`;
 
@@ -3212,14 +3203,13 @@ async function openReimbursementDialog(){
 
   const F = Math.max(0, parseInt(document.getElementById('rb-F').value,10) || 0);
   const J = Math.max(0, parseInt(document.getElementById('rb-J').value,10) || 0);
-  const N = Math.max(0, parseInt(document.getElementById('rb-N').value,10) || 0);
   const sessionNo = Math.max(1, Math.min(5, parseInt(document.getElementById('rb-sn').value,10) || 1));
-  State.reimburseLoss = { F, J, N, sessionNo };
+  State.reimburseLoss = { F, J, sessionNo };
   updateReimburseStrip();
-  await buildReimbursementXlsx(s, F, J, N, sessionNo);
+  await buildReimbursementXlsx(s, F, J, sessionNo);
 }
 
-async function buildReimbursementXlsx(stats, F, J, N, sessionNo){
+async function buildReimbursementXlsx(stats, F, J, sessionNo){
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sample-recovery';
   const ws = wb.addWorksheet('衛生所繳回款');
@@ -3289,11 +3279,11 @@ async function buildReimbursementXlsx(stats, F, J, N, sessionNo){
     {a:'I5', v:{formula:'H5*150'}, nf:NUM_FMT},
     {a:'J5', v:J,        nf:NUM_FMT},
     {a:'K5', v:{formula:'J5*20'},  nf:NUM_FMT},
-    {a:'L5', v:stats.L,  nf:NUM_FMT},
-    {a:'M5', v:{formula:'L5*70'},  nf:NUM_FMT},
-    {a:'N5', v:N,        nf:NUM_FMT},
-    {a:'O5', v:{formula:'N5*40'},  nf:NUM_FMT},
-    {a:'P5', v:{formula:'E5+G5+I5+K5+M5+O5'}, nf:NUM_FMT, fill:HEAD_FILL_BLUE},
+    {a:'L5', v:''},
+    {a:'M5', v:''},
+    {a:'N5', v:''},
+    {a:'O5', v:''},
+    {a:'P5', v:{formula:'E5+G5+I5+K5'}, nf:NUM_FMT, fill:HEAD_FILL_BLUE},
     {a:'Q5', v:''},
   ];
   for(const d of cells){
@@ -3313,7 +3303,7 @@ async function buildReimbursementXlsx(stats, F, J, N, sessionNo){
   a.href = url; a.download = `衛生所繳回款_${State.session.date}_第${sessionNo}場.xlsx`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast(`已匯出 衛生所繳回款 (${stats.D+stats.L+stats.H} 人 / 耗損 ${F+J+N})`,'ok');
+  toast(`已匯出 衛生所繳回款 (${stats.D+stats.H} 人 / 耗損 ${F+J})`,'ok');
 }
 
 /* ── 本場每日進度圖表 ── */

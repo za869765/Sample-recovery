@@ -943,7 +943,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.68';
+const APP_VERSION = 'v0.3.69';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1007,6 +1007,7 @@ async function openSplit(a, b){
   document.getElementById('topbar-fobt-count').textContent = (sa.fobt||0)+(sb.fobt||0);
   document.getElementById('topbar-gastric-count').textContent = (sa.gastric||0)+(sb.gastric||0);
   document.getElementById('btn-split').classList.add('hidden');
+  document.getElementById('seg-scope').classList.add('hidden'); // v0.3.69 並排時左右各自有按鈕，共用列不放「單日／兩天合併」以免誤解
   document.getElementById('split-left').src  = location.pathname + '?session=' + encodeURIComponent(a) + '&embed=1&pane=left';
   document.getElementById('split-right').src = location.pathname + '?session=' + encodeURIComponent(b) + '&embed=1&pane=right';
 }

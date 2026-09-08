@@ -236,7 +236,7 @@ body.readonly .rs-reimburse-dl{display:none}
 .view-split iframe:first-child{border-color:oklch(0.62 0.16 250)}
 .view-split iframe:last-child{border-color:oklch(0.62 0.17 145)}
 /* embed（並排子畫面）：隱藏品牌、首頁、切換場次箭頭，不能再進首頁/切場 */
-body.embed .rs-brand,body.embed #btn-home,body.embed #btn-split,body.embed #seg-scope,body.embed .rs-topbar-divider{display:none!important}
+body.embed .rs-brand,body.embed #btn-home,body.embed #btn-split,body.embed .rs-topbar-divider{display:none!important}
 body.embed #btn-switch-session{pointer-events:none;cursor:default;background:transparent}
 body.embed #btn-switch-session svg{display:none}
 body.embed .rs-topbar{height:40px;padding:0 12px}
@@ -558,10 +558,6 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4 L5 7 L8 4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
       </button>
       <button class="rs-btn is-ghost is-sm hidden" id="btn-split" data-tip="連續日期場次左右並排處理">⇆ 並排</button>
-      <div class="rs-seg hidden" id="seg-scope" data-tip="列印待收檢／催管簡訊／列印送管／陽性名單／轉診單／繳回款 的處理範圍">
-        <button data-scope="single" class="is-on">單日</button>
-        <button data-scope="both" id="seg-scope-both">兩天合併</button>
-      </div>
       <div style="display:flex;gap:6px;margin-left:4px;font-size:12px;color:var(--ink-mute)">
         <span>腸篩 <b class="rs-mono" id="topbar-fobt-count" style="color:var(--ink)">0</b></span>
         <span>·</span>
@@ -943,7 +939,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.72';
+const APP_VERSION = 'v0.3.73';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1030,7 +1026,6 @@ async function openSplit(a, b){
     if(pick===1) openSession(a);
     else if(pick===2) openSession(b);
   };
-  document.getElementById('seg-scope').classList.add('hidden'); // v0.3.69 並排時左右各自有按鈕，共用列不放「單日／兩天合併」以免誤解
   document.getElementById('split-left').src  = location.pathname + '?session=' + encodeURIComponent(a) + '&embed=1&pane=left';
   document.getElementById('split-right').src = location.pathname + '?session=' + encodeURIComponent(b) + '&embed=1&pane=right';
 }
@@ -1611,12 +1606,7 @@ async function openSession(date){
   bs.setAttribute('data-tip', '連續日期場次左右並排處理');
   bs.classList.toggle('hidden', !adj);
   bs.onclick = ()=>{ if(adj) openSplit(adj[0], adj[1]); };
-  // 單日／兩天合併 切換（換場次一律回單日）
-  State.scope='single'; State.session2=null;
-  const seg = document.getElementById('seg-scope');
-  seg.classList.toggle('hidden', !adj);
-  seg.querySelectorAll('[data-scope]').forEach(b=>{ b.classList.toggle('is-on', b.dataset.scope==='single'); b.onclick=()=>setScope(b.dataset.scope); });
-  if(adj){ const other = adj[0]===date ? adj[1] : adj[0]; document.getElementById('seg-scope-both').textContent = '兩天合併 '+other.slice(-4); }
+  State.scope='single'; State.session2=null; // 換場次一律回單日
   // init picker date：預設場次日（行醫日）
   State.batchDate = rocToDate(date) || todayDateStr();
   document.getElementById('batch-date').value = State.batchDate;
@@ -1883,7 +1873,6 @@ function outputRocLabel(){
 }
 function outputRoster(){ return scopeBoth() ? [...(State.session.roster||[]), ...(State.session2.roster||[])] : (State.session?.roster||[]); }
 async function setScope(scope){
-  const seg = document.getElementById('seg-scope');
   if(scope==='both'){
     const adj = adjacentSessions(State.session?.date);
     if(!adj){ toast('前後一天沒有場次，無法合併','warn'); return; }
@@ -1904,11 +1893,27 @@ async function setScope(scope){
       }catch(e){ setSync('bad','讀取失敗'); toast('讀取 '+other+' 失敗：'+e.message,'bad'); return; }
     }
     State.scope='both';
-    toast(`兩天合併：${outputDates().join(' + ')}（列印／簡訊／名單／轉診單／繳回款一次處理；畫面列表與寫入仍是本日）`,'ok');
   } else {
     State.scope='single';
   }
-  seg?.querySelectorAll('[data-scope]').forEach(b=>b.classList.toggle('is-on', b.dataset.scope===State.scope));
+}
+/* v0.3.73 輸出類按鈕的範圍決定：
+ *  - 單一場次頁面：一律只有本場，不問
+ *  - 並排子畫面（embed）且另一邊是前後一天的場次：按下時詢問「只本場／兩天合併」
+ *  fn 跑完（含轉診單、繳回款等 dialog 關掉後）一律回單日，不留狀態 */
+async function withScope(fn){
+  const date = State.session?.date;
+  const adj = (date && document.body.classList.contains('embed')) ? adjacentSessions(date) : null;
+  if(!adj){ State.scope='single'; State.session2=null; return fn(); }
+  const other = adj[0]===date ? adj[1] : adj[0];
+  const pick = await dialog(`<h3>處理範圍</h3>
+    <p style="font-size:13px;margin:6px 0 0">只處理本場 <b class="rs-mono">${date}</b>，還是連同 <b class="rs-mono">${other}</b> 兩天一起？</p>
+    <p style="font-size:12px;color:var(--ink-mute);margin:4px 0 0">兩天合併只影響這次輸出（列印／檔案），畫面列表與寫入仍是本場。</p>`,
+    [{label:'取消'},{label:'只本場 '+date.slice(-4)},{label:'兩天合併 '+adj[0].slice(-4)+'+'+adj[1].slice(-4), primary:true}]);
+  if(pick!==1 && pick!==2) return;
+  if(pick===2){ await setScope('both'); if(State.scope!=='both') return; }
+  else State.scope='single';
+  try{ await fn(); } finally { State.scope='single'; }
 }
 function currentMerged(){
   const q = State.caseSearch.toLowerCase().trim();
@@ -1964,7 +1969,7 @@ function renderCases(){
     cancel: sumS(o=>o.cancel),
   };
   document.getElementById('filter-chips').innerHTML = [
-    ['all','全部'],['pending','未回收'],['done','已回收'],['referral','待轉介'],['missed','轉介未做腸鏡'],['cancel','取消追蹤'],
+    ['all','全部'],['pending','未回收'],['done','已回收'], /* v0.3.73 依使用者要求移除 待轉介／轉介未做腸鏡／取消追蹤 三顆篩選鈕 */
   ].map(([k,l])=>`<button class="rs-chip ${State.caseFilter===k?'is-on':''}" data-filter="${k}">${l} <span class="rs-chip-count">${counts[k]}</span></button>`).join('');
   document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{State.caseFilter=b.dataset.filter;renderCases()});
 
@@ -2327,9 +2332,9 @@ document.getElementById('btn-export-chart').onclick = exportChartPNG;
 document.getElementById('btn-export-cases').onclick = exportCasesXlsx;
 document.getElementById('btn-export-overview').onclick = exportOverview;
 document.getElementById('btn-groups').onclick = openGroupsDialog;
-document.getElementById('btn-reimbursement').onclick = openReimbursementDialog;
-document.getElementById('btn-export-positive').onclick = () => exportPositiveList();
-document.getElementById('btn-referral').onclick = openReferralDialog;
+document.getElementById('btn-reimbursement').onclick = ()=>withScope(openReimbursementDialog);
+document.getElementById('btn-export-positive').onclick = ()=>withScope(()=>exportPositiveList());
+document.getElementById('btn-referral').onclick = ()=>withScope(openReferralDialog);
 document.getElementById('btn-open-existing').onclick = loadHome;
 document.getElementById('btn-home').onclick = loadHome;
 /* v0.3.67 topbar「▾」切換場次：原本沒綁事件、點了沒反應。改開清單 dialog，點一列直接 openSession */
@@ -2414,9 +2419,9 @@ function autoFocusByTail(q){
     document.getElementById('cases-search-wrap').classList.remove('is-active');
   }
 }
-document.getElementById('btn-print-pick').onclick = ()=>printPickList();
-document.getElementById('btn-sms-csv').onclick = ()=>exportSmsCsv();
-document.getElementById('btn-print-send').onclick = ()=>printSendListWithPicker();
+document.getElementById('btn-print-pick').onclick = ()=>withScope(printPickList);
+document.getElementById('btn-sms-csv').onclick = ()=>withScope(exportSmsCsv);
+document.getElementById('btn-print-send').onclick = ()=>withScope(printSendListWithPicker);
 document.getElementById('btn-reissue').onclick = ()=>openReissueDialog();
 document.getElementById('btn-add-case').onclick = ()=>openAddCaseDialog();
 document.getElementById('btn-withdraw').onclick = ()=>openWithdrawDialog();

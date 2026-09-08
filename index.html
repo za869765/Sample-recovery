@@ -910,7 +910,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.66';
+const APP_VERSION = 'v0.3.67';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -984,6 +984,11 @@ function dateToMMDD(d){ // 2026-05-22 → 05/22
 function todayRoc(){
   const d=new Date(); const roc=d.getFullYear()-1911;
   return String(roc).padStart(3,'0') + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+}
+/* v0.3.67 場次民國年早於今年 → 往年場次（首頁自動結案） */
+function isPastYearSession(roc){
+  if(!roc || String(roc).length!==7) return false;
+  return parseInt(String(roc).slice(0,3),10) < (new Date().getFullYear()-1911);
 }
 function todayDateStr(){
   const d=new Date();
@@ -1072,7 +1077,8 @@ function renderHomeSessions(){
   const list = document.getElementById('home-sessions');
   if(!list) return;
   const all = State.allSessions || [];
-  const closed = State.closed || new Set();
+  /* v0.3.67 往年場次自動結案：民國年 < 今年者一律視為已結案（不寫 localStorage，各裝置一致），首頁只留當年度 */
+  const closed = new Set([...(State.closed || new Set()), ...all.filter(s=>isPastYearSession(s.date)).map(s=>s.date)]);
   const visible = State.showClosed ? all : all.filter(s => !closed.has(s.date));
 
   document.getElementById('home-summary-existing').textContent = `${visible.length} 個場次`;
@@ -1092,8 +1098,9 @@ function renderHomeSessions(){
     const recov=s.recovered||0;
     const pct = total ? Math.round(recov/total*100) : 0;
     const isClosed = closed.has(s.date);
+    const isPast = isPastYearSession(s.date);
     const status = isClosed
-      ? '<span class="rs-status">已結案</span>'
+      ? `<span class="rs-status">${isPast?'往年結案':'已結案'}</span>`
       : (pct>=100 ? '<span class="rs-status is-ok">完成</span>' : '<span class="rs-status is-accent">進行中</span>');
     return `<div class="rs-session" data-date="${s.date}" style="${isClosed?'opacity:0.55':''}">
       <div class="rs-session-date">${s.date}<small>${rocToDate(s.date)}</small></div>
@@ -1107,11 +1114,13 @@ function renderHomeSessions(){
         <div class="rs-session-prog-lbl"><span>回收 ${recov}/${total}</span><span>${pct}%</span></div>
       </div>
       <div style="width:70px;text-align:right">${status}</div>
-      <button class="rs-btn is-ghost is-icon is-sm" data-close-date="${s.date}" data-tip="${isClosed?'復原（取消結案）':'結案（隱藏此場次）'}" style="margin-left:4px">
+      ${isPast
+        ? '<span style="display:inline-block;width:24px;margin-left:4px"></span>'
+        : `<button class="rs-btn is-ghost is-icon is-sm" data-close-date="${s.date}" data-tip="${isClosed?'復原（取消結案）':'結案（隱藏此場次）'}" style="margin-left:4px">
         ${isClosed
           ? '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6 a4 4 0 1 1 8 0 a4 4 0 1 1 -8 0 M4 6 L6 8 L9 4" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
           : '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3 l6 6 M9 3 l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'}
-      </button>
+      </button>`}
       <svg width="14" height="14" viewBox="0 0 14 14" style="color:var(--ink-faint)"><path d="M5 3 L9 7 L5 11" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
     </div>`;
   }).join('');
@@ -2163,6 +2172,37 @@ document.getElementById('btn-export-positive').onclick = () => exportPositiveLis
 document.getElementById('btn-referral').onclick = openReferralDialog;
 document.getElementById('btn-open-existing').onclick = loadHome;
 document.getElementById('btn-home').onclick = loadHome;
+/* v0.3.67 topbar「▾」切換場次：原本沒綁事件、點了沒反應。改開清單 dialog，點一列直接 openSession */
+document.getElementById('btn-switch-session').onclick = async ()=>{
+  if(document.body.classList.contains('readonly')) return;
+  let all = State.allSessions || [];
+  if(!all.length){
+    try{ const r=await fetch('/api/sessions'); const j=await r.json(); if(j.ok){ all=j.sessions||[]; State.allSessions=all; } }catch{}
+  }
+  if(!all.length){ toast('尚無其他場次','bad'); return; }
+  const cur = State.session?.date || '';
+  const manual = State.closed || loadClosed();
+  const list = [...all].sort((a,b)=>b.date.localeCompare(a.date));
+  const rows = list.map(s=>{
+    const total=(s.fobt||0)+(s.gastric||0), recov=s.recovered||0, pct= total?Math.round(recov/total*100):0;
+    const closed = manual.has(s.date) || isPastYearSession(s.date);
+    const isCur = s.date===cur;
+    return `<button class="rs-btn ${isCur?'is-primary':'is-ghost'}" data-sess="${s.date}" style="width:100%;justify-content:space-between;margin:2px 0;${closed?'opacity:.55':''}">
+      <span class="rs-mono" style="font-weight:600">${s.date}</span>
+      <span style="color:var(--ink-mute);font-size:12px">${rocToDate(s.date)}</span>
+      <span style="font-size:12px">腸 ${s.fobt||0} · 胃 ${s.gastric||0}</span>
+      <span class="rs-mono" style="font-size:12px">${recov}/${total} ${pct}%</span>
+      <span style="font-size:11px;color:var(--ink-mute)">${isCur?'目前':(closed?(isPastYearSession(s.date)?'往年':'已結案'):'')}</span>
+    </button>`;
+  }).join('');
+  const p = dialog(`<h3>切換場次</h3><div style="max-height:60vh;overflow:auto;display:flex;flex-direction:column">${rows}</div>`, [{label:'取消'}]);
+  document.querySelectorAll('#dialog [data-sess]').forEach(b=>b.onclick=()=>{
+    document.getElementById('overlay').classList.remove('is-show');
+    const d=b.dataset.sess;
+    if(d!==cur) openSession(d);
+  });
+  await p;
+};
 document.getElementById('btn-upload-back').onclick = loadHome;
 document.getElementById('btn-cancel-1').onclick = loadHome;
 document.getElementById('btn-prev-1').onclick = ()=>{

@@ -568,6 +568,10 @@ body.readonly .rs-cb{pointer-events:none}
     <div class="rs-sync" id="sync-indicator">
       <span class="rs-dot"></span> <span id="sync-text">待命</span>
     </div>
+    <button class="rs-btn is-ghost is-sm hidden" id="btn-refresh" data-tip="重新從試算表讀取場次清單" style="margin-left:8px">
+      <svg width="14" height="14" viewBox="0 0 14 14"><path d="M11.5 7 a4.5 4.5 0 1 1 -1.3 -3.2 M11.5 2.5 v2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      重新整理
+    </button>
     <button class="rs-btn is-primary" id="btn-home" data-tip="回場次選擇首頁" style="margin-left:10px;font-weight:700;padding:0 16px;box-shadow:0 1px 3px rgba(0,0,0,.18)">
       <svg width="16" height="16" viewBox="0 0 14 14"><path d="M2 6 L7 2 L12 6 V11 a1 1 0 0 1 -1 1 H3 a1 1 0 0 1 -1 -1 Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
       回首頁
@@ -583,19 +587,7 @@ body.readonly .rs-cb{pointer-events:none}
         <p style="margin:6px 0 0;color:var(--ink-mute);font-size:13.5px">從雲端載入既有場次繼續追蹤，或上傳本場 4 份名冊建立新場次。</p>
       </header>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <button class="rs-card" id="btn-open-existing" style="padding:22px;text-align:left;cursor:pointer;border:1px solid var(--accent-line);background:linear-gradient(180deg,var(--accent-soft) 0%,var(--surface) 60%)">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-            <div style="width:36px;height:36px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center">
-              <svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 5 h12 v9 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 Z M3 5 V4 a1 1 0 0 1 1 -1 h4 l2 2 h4 a1 1 0 0 1 1 1 v1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-            </div>
-            <div>
-              <div style="font-size:16px;font-weight:600">讀取行醫專案</div>
-              <div style="font-size:12px;color:var(--ink-mute)">從試算表載入已建立的場次</div>
-            </div>
-          </div>
-          <div style="font-size:12px;color:var(--ink-mute)" id="home-summary-existing">載入中…</div>
-        </button>
+      <div style="display:grid;grid-template-columns:1fr;gap:16px;max-width:560px">
         <button class="rs-card" id="btn-open-new" style="padding:22px;text-align:left;cursor:pointer">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
             <div style="width:36px;height:36px;border-radius:8px;background:var(--surface-alt);color:var(--ink);border:1px solid var(--line);display:grid;place-items:center">
@@ -606,7 +598,7 @@ body.readonly .rs-cb{pointer-events:none}
               <div style="font-size:12px;color:var(--ink-mute)">上傳當日 4 份名冊建立場次</div>
             </div>
           </div>
-          <div style="font-size:12px;color:var(--ink-mute)">fobt45-75 · 胃癌 · 非45-75歲FOBT · 衛生所查詢</div>
+          <div style="font-size:12px;color:var(--ink-mute)">fobt45-75 · 胃癌 · 非45-75歲FOBT · 衛生所查詢　<span id="home-summary-existing" style="color:var(--ink-faint)"></span></div>
         </button>
       </div>
 
@@ -939,7 +931,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.76';
+const APP_VERSION = 'v0.3.77';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -966,6 +958,7 @@ function showView(v){
   document.querySelectorAll('.view-home,.view-upload,.view-cases,.view-split').forEach(e=>e.classList.remove('is-active'));
   document.getElementById('view-'+v).classList.add('is-active');
   // topbar adjustments
+  document.getElementById('btn-refresh').classList.toggle('hidden', v!=='home'); // v0.3.77
   const sessBlock = document.getElementById('topbar-session-block');
   if (v==='cases' && State.session){
     sessBlock.classList.remove('hidden');
@@ -1071,6 +1064,12 @@ function todayRoc(){
   const d=new Date(); const roc=d.getFullYear()-1911;
   return String(roc).padStart(3,'0') + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
 }
+/* v0.3.77 場次日期距今超過 60 天 → 首頁預設鎖定（反灰、不能點開），要按 🔒 解鎖（本次頁面有效） */
+const LOCK_AFTER_DAYS = 60;
+function isStaleSession(roc){
+  const iso = rocToDate(roc); if(!iso) return false;
+  return (Date.now() - new Date(iso+'T00:00:00').getTime()) / 86400000 > LOCK_AFTER_DAYS;
+}
 /* v0.3.67 場次民國年早於今年 → 往年場次（首頁自動結案） */
 function isPastYearSession(roc){
   if(!roc || String(roc).length!==7) return false;
@@ -1168,7 +1167,7 @@ function renderHomeSessions(){
   const closed = new Set([...(State.closed || new Set()), ...all.filter(s=>isPastYearSession(s.date)).map(s=>s.date)]);
   const visible = State.showClosed ? all : all.filter(s => !closed.has(s.date));
 
-  document.getElementById('home-summary-existing').textContent = `${visible.length} 個場次`;
+  document.getElementById('home-summary-existing').textContent = `（雲端已有 ${visible.length} 個場次）`;
   const cs = document.getElementById('closed-summary');
   if(cs) cs.textContent = closed.size ? `（已結案 ${closed.size} 場）` : '';
 
@@ -1186,10 +1185,11 @@ function renderHomeSessions(){
     const pct = total ? Math.round(recov/total*100) : 0;
     const isClosed = closed.has(s.date);
     const isPast = isPastYearSession(s.date);
+    const isLocked = !isClosed && isStaleSession(s.date) && !(State.unlocked||new Set()).has(s.date);
     const status = isClosed
       ? `<span class="rs-status">${isPast?'往年結案':'已結案'}</span>`
       : (pct>=100 ? '<span class="rs-status is-ok">完成</span>' : '<span class="rs-status is-accent">進行中</span>');
-    return `<div class="rs-session" data-date="${s.date}" style="${isClosed?'opacity:0.55':''}">
+    return `<div class="rs-session" data-date="${s.date}" data-locked="${isLocked?1:0}" style="${isClosed?'opacity:0.55':(isLocked?'opacity:0.45;filter:grayscale(.6);cursor:default':'')}">
       <div class="rs-session-date">${s.date}<small>${rocToDate(s.date)}</small></div>
       <div style="width:140px;font-size:13px;color:var(--ink-mute)" class="rs-mono">行醫場次 #${s.date.slice(-4)}</div>
       <div class="rs-session-meta">
@@ -1200,10 +1200,13 @@ function renderHomeSessions(){
         <div class="rs-session-prog-bar"><i style="width:${pct}%"></i></div>
         <div class="rs-session-prog-lbl"><span>回收 ${recov}/${total}</span><span>${pct}%</span></div>
       </div>
-      ${(()=>{ const adj = isClosed ? null : adjacentSessions(s.date); return adj
+      ${(()=>{ const adj = (isClosed || isLocked) ? null : adjacentSessions(s.date); return adj
         ? `<button class="rs-btn is-ghost is-sm" data-split="${adj[0]},${adj[1]}" data-tip="與 ${adj[0]===s.date?adj[1]:adj[0]} 左右並排處理" style="margin-right:4px">⇆ 並排</button>`
         : ''; })()}
       <div style="width:70px;text-align:right">${status}</div>
+      ${(!isClosed && isStaleSession(s.date))
+        ? `<button class="rs-btn ${isLocked?'is-primary':'is-ghost'} is-sm" data-unlock="${s.date}" data-tip="${isLocked?'超過 '+LOCK_AFTER_DAYS+' 天的場次預設鎖定，點此解鎖後才能打開':'再次鎖定'}" style="margin-left:4px;${isLocked?'opacity:1;filter:none':''}">${isLocked?'🔒 解鎖':'🔓'}</button>`
+        : ''}
       ${isPast
         ? '<span style="display:inline-block;width:24px;margin-left:4px"></span>'
         : `<button class="rs-btn is-ghost is-icon is-sm" data-close-date="${s.date}" data-tip="${isClosed?'復原（取消結案）':'結案（隱藏此場次）'}" style="margin-left:4px">
@@ -1217,8 +1220,18 @@ function renderHomeSessions(){
 
   list.querySelectorAll('.rs-session').forEach(el=>{
     el.onclick=(ev)=>{
-      if(ev.target.closest('[data-close-date]') || ev.target.closest('[data-split]')) return;
+      if(ev.target.closest('[data-close-date]') || ev.target.closest('[data-split]') || ev.target.closest('[data-unlock]')) return;
+      if(el.dataset.locked==='1'){ toast('此場次已超過 '+LOCK_AFTER_DAYS+' 天，請先按右側「🔒 解鎖」再打開','warn'); return; }
       openSession(el.dataset.date);
+    };
+  });
+  list.querySelectorAll('[data-unlock]').forEach(b=>{
+    b.onclick=(ev)=>{
+      ev.stopPropagation();
+      if(!State.unlocked) State.unlocked = new Set();
+      const d=b.dataset.unlock;
+      if(State.unlocked.has(d)) State.unlocked.delete(d); else State.unlocked.add(d);
+      renderHomeSessions();
     };
   });
   list.querySelectorAll('[data-split]').forEach(b=>{
@@ -2335,7 +2348,7 @@ document.getElementById('btn-groups').onclick = openGroupsDialog;
 document.getElementById('btn-reimbursement').onclick = ()=>withScope(openReimbursementDialog);
 document.getElementById('btn-export-positive').onclick = ()=>withScope(()=>exportPositiveList());
 document.getElementById('btn-referral').onclick = ()=>withScope(openReferralDialog);
-document.getElementById('btn-open-existing').onclick = loadHome;
+document.getElementById('btn-refresh').onclick = loadHome; // v0.3.77 原「讀取行醫專案」卡＝重新整理，改為 topbar 小按鈕
 document.getElementById('btn-home').onclick = loadHome;
 /* v0.3.67 topbar「▾」切換場次：原本沒綁事件、點了沒反應。改開清單 dialog，點一列直接 openSession */
 document.getElementById('btn-switch-session').onclick = async ()=>{

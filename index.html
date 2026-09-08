@@ -229,6 +229,28 @@ body.readonly .rs-reimburse-dl{display:none}
 .rs-frame{height:100vh;display:flex;flex-direction:column;overflow:hidden}
 .view-home,.view-upload,.view-cases{display:none;flex:1;flex-direction:column;overflow:hidden}
 .view-home.is-active,.view-upload.is-active,.view-cases.is-active{display:flex}
+/* v0.3.68 連續日期場次並排檢視：左右各一個 iframe 載入同一套系統（?session=X&embed=1），各自獨立操作 */
+.view-split{display:none;flex:1;gap:8px;padding:8px;min-height:0;overflow:hidden}
+.view-split.is-active{display:flex}
+.view-split iframe{flex:1;min-width:0;height:100%;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.view-split iframe:first-child{border-color:oklch(0.62 0.16 250)}
+.view-split iframe:last-child{border-color:oklch(0.62 0.17 145)}
+/* embed（並排子畫面）：隱藏品牌、首頁、切換場次箭頭，不能再進首頁/切場 */
+body.embed .rs-brand,body.embed #btn-home,body.embed #btn-split,body.embed #seg-scope,body.embed .rs-topbar-divider{display:none!important}
+body.embed #btn-switch-session{pointer-events:none;cursor:default;background:transparent}
+body.embed #btn-switch-session svg{display:none}
+body.embed .rs-topbar{height:40px;padding:0 12px}
+/* 並排左右兩場各自配色（?pane=left 藍 / ?pane=right 綠）：背景、卡片、列底色、topbar 上緣色條，一眼分辨是哪一場 */
+body.pane-left{--bg:#e8f0fb;--surface:#f7faff;--surface-alt:#edf3fc;--surface-row:#f2f6fd}
+body.pane-right{--bg:#e8f5ec;--surface:#f6fcf7;--surface-alt:#edf7f0;--surface-row:#f2f9f4}
+body.pane-left .rs-topbar{border-top:4px solid oklch(0.62 0.16 250);background:#e3edfa}
+body.pane-right .rs-topbar{border-top:4px solid oklch(0.62 0.17 145);background:#e2f2e7}
+body.pane-left #topbar-session-label{color:oklch(0.42 0.16 250)}
+body.pane-right #topbar-session-label{color:oklch(0.42 0.15 145)}
+body.pane-left #topbar-session-label::before{content:"左";display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;font-size:11px;background:oklch(0.62 0.16 250);color:#fff}
+body.pane-right #topbar-session-label::before{content:"右";display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;font-size:11px;background:oklch(0.62 0.17 145);color:#fff}
+.view-split iframe:first-child{border-width:3px}
+.view-split iframe:last-child{border-width:3px}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:6px}
 @keyframes s{to{transform:rotate(360deg)}}
 
@@ -535,6 +557,11 @@ body.readonly .rs-cb{pointer-events:none}
         <span style="color:var(--ink-mute)">場</span>
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4 L5 7 L8 4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
       </button>
+      <button class="rs-btn is-ghost is-sm hidden" id="btn-split" data-tip="連續日期場次左右並排處理">⇆ 並排</button>
+      <div class="rs-seg hidden" id="seg-scope" data-tip="列印待收檢／催管簡訊／列印送管／陽性名單／轉診單／繳回款 的處理範圍">
+        <button data-scope="single" class="is-on">單日</button>
+        <button data-scope="both" id="seg-scope-both">兩天合併</button>
+      </div>
       <div style="display:flex;gap:6px;margin-left:4px;font-size:12px;color:var(--ink-mute)">
         <span>腸篩 <b class="rs-mono" id="topbar-fobt-count" style="color:var(--ink)">0</b></span>
         <span>·</span>
@@ -623,6 +650,12 @@ body.readonly .rs-cb{pointer-events:none}
         <span style="margin-left:auto">行動醫院檢體回收追蹤系統</span>
       </footer>
     </div>
+  </div>
+
+  <!-- ─── SPLIT VIEW（v0.3.68 連續日期場次並排）─── -->
+  <div class="view-split" id="view-split">
+    <iframe id="split-left" title="左場次" src="about:blank"></iframe>
+    <iframe id="split-right" title="右場次" src="about:blank"></iframe>
   </div>
 
   <!-- ─── UPLOAD VIEW ─── -->
@@ -910,7 +943,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.67';
+const APP_VERSION = 'v0.3.68';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -934,14 +967,48 @@ const State = {
 
 function showView(v){
   State.view = v;
-  document.querySelectorAll('.view-home,.view-upload,.view-cases').forEach(e=>e.classList.remove('is-active'));
+  document.querySelectorAll('.view-home,.view-upload,.view-cases,.view-split').forEach(e=>e.classList.remove('is-active'));
   document.getElementById('view-'+v).classList.add('is-active');
   // topbar adjustments
   const sessBlock = document.getElementById('topbar-session-block');
   if (v==='cases' && State.session){
     sessBlock.classList.remove('hidden');
     document.getElementById('topbar-session-label').textContent = State.session.date;
+  } else if (v==='split'){
+    sessBlock.classList.remove('hidden');
   } else sessBlock.classList.add('hidden');
+  // 離開並排時清掉 iframe，避免背景兩個子系統繼續佔資源
+  if(v!=='split'){
+    ['split-left','split-right'].forEach(id=>{ const f=document.getElementById(id); if(f && f.getAttribute('src')!=='about:blank') f.src='about:blank'; });
+  }
+}
+
+/* ── v0.3.68 連續日期場次並排 ──
+ * adjacentSessions(date)：前一天或後一天有場次 → 回傳 [較早, 較晚]（沒有回 null）
+ * openSplit(a,b)：左右各載一個 iframe（?session=X&embed=1），兩邊各自完整可操作 */
+function adjacentSessions(date){
+  const all = State.allSessions || [];
+  const has = d => all.some(s=>s.date===d);
+  const iso = rocToDate(date); if(!iso) return null;
+  const shift = k => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+k); return dateToRoc(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')); };
+  const next = shift(1), prev = shift(-1);
+  if(has(next)) return [date, next];
+  if(has(prev)) return [prev, date];
+  return null;
+}
+async function openSplit(a, b){
+  await flushAllPending();
+  State.session = null;
+  showView('split');
+  const all = State.allSessions || [];
+  const sa = all.find(s=>s.date===a)||{}, sb = all.find(s=>s.date===b)||{};
+  document.getElementById('topbar-session-label').textContent = a + ' ＋ ' + b;
+  document.getElementById('topbar-session-roc').textContent = '· ' + rocToDate(a).slice(5) + ' / ' + rocToDate(b).slice(5) + ' 並排';
+  document.getElementById('topbar-fobt-count').textContent = (sa.fobt||0)+(sb.fobt||0);
+  document.getElementById('topbar-gastric-count').textContent = (sa.gastric||0)+(sb.gastric||0);
+  document.getElementById('btn-split').classList.add('hidden');
+  document.getElementById('split-left').src  = location.pathname + '?session=' + encodeURIComponent(a) + '&embed=1&pane=left';
+  document.getElementById('split-right').src = location.pathname + '?session=' + encodeURIComponent(b) + '&embed=1&pane=right';
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1113,6 +1180,9 @@ function renderHomeSessions(){
         <div class="rs-session-prog-bar"><i style="width:${pct}%"></i></div>
         <div class="rs-session-prog-lbl"><span>回收 ${recov}/${total}</span><span>${pct}%</span></div>
       </div>
+      ${(()=>{ const adj = isClosed ? null : adjacentSessions(s.date); return adj
+        ? `<button class="rs-btn is-ghost is-sm" data-split="${adj[0]},${adj[1]}" data-tip="與 ${adj[0]===s.date?adj[1]:adj[0]} 左右並排處理" style="margin-right:4px">⇆ 並排</button>`
+        : ''; })()}
       <div style="width:70px;text-align:right">${status}</div>
       ${isPast
         ? '<span style="display:inline-block;width:24px;margin-left:4px"></span>'
@@ -1127,9 +1197,12 @@ function renderHomeSessions(){
 
   list.querySelectorAll('.rs-session').forEach(el=>{
     el.onclick=(ev)=>{
-      if(ev.target.closest('[data-close-date]')) return;
+      if(ev.target.closest('[data-close-date]') || ev.target.closest('[data-split]')) return;
       openSession(el.dataset.date);
     };
+  });
+  list.querySelectorAll('[data-split]').forEach(b=>{
+    b.onclick=(ev)=>{ ev.stopPropagation(); const [a,c]=b.dataset.split.split(','); openSplit(a,c); };
   });
   list.querySelectorAll('[data-close-date]').forEach(b=>{
     b.onclick=(ev)=>{
@@ -1505,6 +1578,17 @@ async function openSession(date){
   document.getElementById('topbar-session-label').textContent = date;
   document.getElementById('topbar-session-roc').textContent = '· ' + rocToDate(date);
   document.getElementById('topbar-session-block').classList.remove('hidden');
+  // v0.3.68 前後一天有場次 → 顯示「⇆ 並排」
+  const adj = adjacentSessions(date);
+  const bs = document.getElementById('btn-split');
+  bs.classList.toggle('hidden', !adj);
+  bs.onclick = ()=>{ if(adj) openSplit(adj[0], adj[1]); };
+  // 單日／兩天合併 切換（換場次一律回單日）
+  State.scope='single'; State.session2=null;
+  const seg = document.getElementById('seg-scope');
+  seg.classList.toggle('hidden', !adj);
+  seg.querySelectorAll('[data-scope]').forEach(b=>{ b.classList.toggle('is-on', b.dataset.scope==='single'); b.onclick=()=>setScope(b.dataset.scope); });
+  if(adj){ const other = adj[0]===date ? adj[1] : adj[0]; document.getElementById('seg-scope-both').textContent = '兩天合併 '+other.slice(-4); }
   // init picker date：預設場次日（行醫日）
   State.batchDate = rocToDate(date) || todayDateStr();
   document.getElementById('batch-date').value = State.batchDate;
@@ -1718,14 +1802,15 @@ async function loadSessionData(tab){
     State.session.cases[tab] = [];
   }
 }
-function buildMerged(){
+/* v0.3.68 抽出可重用版：給任一 session 物件（{date,cases}）算 merged，兩天合併模式的第二場也用它 */
+function buildMergedFor(sess){
   const m = new Map();
-  for (const r of (State.session.cases.fobt||[])){
+  for (const r of (sess.cases.fobt||[])){
     if (!r.cisid) continue;
     m.set(r.cisid, {cisid:r.cisid, name:r.name, idno:r.idno, tel1:r.tel1, tel2:r.tel2,
-      dispatch:r.dispatch||State.session.date, fobt:r, gastric:null});
+      dispatch:r.dispatch||sess.date, fobt:r, gastric:null});
   }
-  for (const r of (State.session.cases.gastric||[])){
+  for (const r of (sess.cases.gastric||[])){
     if (!r.cisid) continue;
     const ex = m.get(r.cisid);
     if (ex){
@@ -1734,13 +1819,16 @@ function buildMerged(){
       if(!ex.idno) ex.idno=r.idno;
       if(!ex.tel1) ex.tel1=r.tel1;
       if(!ex.tel2) ex.tel2=r.tel2;
-      if(!ex.dispatch) ex.dispatch=r.dispatch||State.session.date;
+      if(!ex.dispatch) ex.dispatch=r.dispatch||sess.date;
     } else {
       m.set(r.cisid, {cisid:r.cisid, name:r.name, idno:r.idno, tel1:r.tel1, tel2:r.tel2,
-        dispatch:r.dispatch||State.session.date, fobt:null, gastric:r});
+        dispatch:r.dispatch||sess.date, fobt:null, gastric:r});
     }
   }
-  State.session.merged = [...m.values()].sort((a,b)=>a.cisid.localeCompare(b.cisid));
+  return [...m.values()].sort((a,b)=>a.cisid.localeCompare(b.cisid));
+}
+function buildMerged(){
+  State.session.merged = buildMergedFor(State.session);
   // topbar counts
   document.getElementById('topbar-fobt-count').textContent = (State.session.cases.fobt||[]).length;
   document.getElementById('topbar-gastric-count').textContent = (State.session.cases.gastric||[]).length;
@@ -1749,6 +1837,50 @@ function applyModeUI(){
   document.querySelectorAll('#mode-seg button').forEach(b=>{
     b.classList.toggle('is-on', b.dataset.mode===State.batchMode);
   });
+}
+/* ── v0.3.68 「單日／兩天合併」處理範圍 ──
+ * State.scope='single'|'both'；'both' 時 State.session2 = 相鄰日場次（{date,cases,merged,roster,subsidy}）
+ * 輸出類功能（列印待收檢／催管簡訊／列印送管／陽性名單／轉診單／繳回款）改走 outputMerged()/outputCases()，
+ * 畫面列表與所有寫入仍只動 State.session（本日）。 */
+function scopeBoth(){ return State.scope==='both' && !!State.session2; }
+function outputMerged(){ return scopeBoth() ? [...(State.session.merged||[]), ...(State.session2.merged||[])] : (State.session?.merged||[]); }
+function outputCases(tab){ return scopeBoth() ? [...(State.session.cases[tab]||[]), ...(State.session2.cases[tab]||[])] : (State.session?.cases[tab]||[]); }
+function outputDates(){ // 由早到晚
+  if(!scopeBoth()) return [State.session.date];
+  return [State.session.date, State.session2.date].sort();
+}
+function outputDate(){ return outputDates().join('+'); }
+function outputRocLabel(){
+  return outputDates().map(d=>`${parseInt(d.slice(0,3),10)} 年 ${parseInt(d.slice(3,5),10)} 月 ${parseInt(d.slice(5,7),10)} 日`).join('、');
+}
+function outputRoster(){ return scopeBoth() ? [...(State.session.roster||[]), ...(State.session2.roster||[])] : (State.session?.roster||[]); }
+async function setScope(scope){
+  const seg = document.getElementById('seg-scope');
+  if(scope==='both'){
+    const adj = adjacentSessions(State.session?.date);
+    if(!adj){ toast('前後一天沒有場次，無法合併','warn'); return; }
+    const other = adj[0]===State.session.date ? adj[1] : adj[0];
+    if(!State.session2 || State.session2.date!==other){
+      setSync('syncing','讀取 '+other);
+      const s2 = {date:other, cases:{fobt:[],gastric:[]}, merged:[], roster:[], subsidy:loadSubsidy(other)};
+      try{
+        for(const tab of ['fobt','gastric']){
+          const r=await fetch(`/api/session?date=${other}&type=${tab}`); const j=await r.json();
+          if(!j.ok) throw new Error(j.error||'load failed');
+          s2.cases[tab] = j.cases||[];
+        }
+        try{ const r=await fetch(`/api/roster?date=${encodeURIComponent(other)}`); const j=await r.json(); if(j.ok && Array.isArray(j.roster)) s2.roster=j.roster; }catch{}
+        s2.merged = buildMergedFor(s2);
+        State.session2 = s2;
+        setSync('ok','已同步');
+      }catch(e){ setSync('bad','讀取失敗'); toast('讀取 '+other+' 失敗：'+e.message,'bad'); return; }
+    }
+    State.scope='both';
+    toast(`兩天合併：${outputDates().join(' + ')}（列印／簡訊／名單／轉診單／繳回款一次處理；畫面列表與寫入仍是本日）`,'ok');
+  } else {
+    State.scope='single';
+  }
+  seg?.querySelectorAll('[data-scope]').forEach(b=>b.classList.toggle('is-on', b.dataset.scope===State.scope));
 }
 function currentMerged(){
   const q = State.caseSearch.toLowerCase().trim();
@@ -2339,10 +2471,10 @@ async function batchSendAll(){
 
 /* ── 列印送管：先彈日期窗 ── */
 async function printSendListWithPicker(){
-  if(!State.session?.merged?.length){ toast('無資料','warn'); return; }
+  if(!outputMerged().length){ toast('無資料','warn'); return; }
   // 收集所有已存在的送管日（讓使用者選歷史日期更方便）
   const dates = new Set();
-  for(const p of State.session.merged){
+  for(const p of outputMerged()){
     if(p.fobt?.sendDate) dates.add(p.fobt.sendDate);
     if(p.gastric?.sendDate) dates.add(p.gastric.sendDate);
   }
@@ -2356,12 +2488,12 @@ async function printSendListWithPicker(){
 }
 
 function printSendList(){
-  if(!State.session?.merged?.length){ toast('無資料','warn'); return; }
+  if(!outputMerged().length){ toast('無資料','warn'); return; }
   const target = dateToMMDD(State.batchDate);
   if(!target){ toast('請先在上方選擇日期','warn'); return; }
-  // 合併同人：每人在當日送了哪些（腸/胃/腸+胃）
+  // 合併同人：每人在當日送了哪些（腸/胃/腸+胃）；兩天合併時含相鄰日場次（cisid 含日期前綴，排序自然分日）
   const items = [];
-  for(const p of State.session.merged){
+  for(const p of outputMerged()){
     const kinds = [];
     if(p.fobt?.sendDate === target)    kinds.push('腸');
     if(p.gastric?.sendDate === target) kinds.push('胃');
@@ -2370,8 +2502,7 @@ function printSendList(){
   if(!items.length){ toast(`${target} 無送管紀錄`,'warn'); return; }
   items.sort((a,b)=>a.cisid.localeCompare(b.cisid));
 
-  const sessionDate = State.session.date;
-  const sessionROC = `${parseInt(sessionDate.slice(0,3),10)} 年 ${parseInt(sessionDate.slice(3,5),10)} 月 ${parseInt(sessionDate.slice(5,7),10)} 日`;
+  const sessionROC = outputRocLabel();
   const printedAt = new Date().toLocaleString('zh-TW',{hour12:false});
   const countAll = items.length;
   const countF = items.filter(x=>x.kinds==='腸').length;
@@ -2482,8 +2613,8 @@ td.kind.k-b{background:#fff;color:#a14}
 }
 
 function printPickList(){
-  if(!State.session || !State.session.merged?.length){ toast('無資料可列印','warn'); return; }
-  const pending = State.session.merged.map(p=>{
+  if(!State.session || !outputMerged().length){ toast('無資料可列印','warn'); return; }
+  const pending = outputMerged().map(p=>{
     const needs = [];
     if (p.fobt && p.fobt.status!=='V' && !p.fobt.cancel) needs.push('腸');
     if (p.gastric && p.gastric.status!=='V' && !p.gastric.cancel) needs.push('胃');
@@ -2491,9 +2622,8 @@ function printPickList(){
   }).filter(Boolean).sort((a,b)=>a.cisid.localeCompare(b.cisid));
   if(!pending.length){ toast('全部已回收，無待收檢項目','ok'); return; }
 
-  const date = State.session.date;
-  const rocStr = `${parseInt(date.slice(0,3),10)} 年 ${parseInt(date.slice(3,5),10)} 月 ${parseInt(date.slice(5,7),10)} 日`;
-  const wd = rocToDate(date);
+  const date = outputDate();
+  const wd = outputDates().map(rocToDate).join(' ~ ');
   const printedAt = new Date().toLocaleString('zh-TW',{hour12:false});
   const countF = pending.filter(p=>p.needs.includes('腸')).length;
   const countG = pending.filter(p=>p.needs.includes('胃')).length;
@@ -2557,10 +2687,10 @@ td.chk .box{display:inline-block;width:16px;height:16px;border:1.4px solid #555;
 
 /* ── 催管簡訊 CSV：尚未回收名單（A姓名, B手機9碼無0, C編號末3碼），tel2 優先；無手機者也照列以便人工外撥 ── */
 function exportSmsCsv(){
-  if(!State.session || !State.session.merged?.length){ toast('無資料','warn'); return; }
+  if(!State.session || !outputMerged().length){ toast('無資料','warn'); return; }
   let pending = 0, missing = 0;
   const rows = [];
-  for(const p of State.session.merged){
+  for(const p of outputMerged()){
     const needsF = p.fobt && p.fobt.status!=='V' && !p.fobt.cancel;
     const needsG = p.gastric && p.gastric.status!=='V' && !p.gastric.cancel;
     if(!needsF && !needsG) continue;
@@ -2576,7 +2706,7 @@ function exportSmsCsv(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `催管_${State.session.date}.csv`;
+  a.download = `催管_${outputDate()}.csv`;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
@@ -3058,7 +3188,7 @@ async function exportOverview(){
 /* ── 匯出陽性清單 xlsx：腸/胃皆陽性個案，含聯絡資訊方便追蹤 ── */
 async function exportPositiveList(kind){
   if(!State.session){ toast('未開啟場次','warn'); return; }
-  const merged = State.session.merged || [];
+  const merged = outputMerged();
   const rows = [];
   for(const p of merged){
     const fobtPos = p.fobt && classifyReport(p.fobt.report)==='pos';
@@ -3133,7 +3263,7 @@ async function exportPositiveList(kind){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const tag = kind==='fobt' ? '腸' : kind==='gastric' ? '胃' : '全';
-  a.href = url; a.download = `陽性清單_${tag}_${State.session.date}.xlsx`;
+  a.href = url; a.download = `陽性清單_${tag}_${outputDate()}.xlsx`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   toast(`已匯出 ${rows.length} 筆陽性個案`,'ok');
@@ -3153,11 +3283,11 @@ function escapeHTML(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;',
 */
 function computeReimburseStats(){
   if(!State.session) return null;
-  const sub = State.subsidy || new Set();
+  const sub = new Set([...(State.subsidy || new Set()), ...(scopeBoth() ? (State.session2.subsidy||new Set()) : [])]);
   const isFree = c => c.source==='free' || (!c.source && sub.has(c.cisid));
   const is6E   = c => c.source==='6E'   || (!c.source && !sub.has(c.cisid));
-  const fobtArr = (State.session.cases.fobt||[]).filter(c => !c.cancel);
-  const gastArr = (State.session.cases.gastric||[]).filter(c => !c.cancel);
+  const fobtArr = outputCases('fobt').filter(c => !c.cancel);
+  const gastArr = outputCases('gastric').filter(c => !c.cancel);
   return {
     D: fobtArr.filter(c => is6E(c)   && c.status==='V').length,
     L: fobtArr.filter(c => isFree(c) && c.status==='V').length,
@@ -3192,10 +3322,10 @@ async function openReimbursementDialog(){
   const s = computeReimburseStats();
   if(!s){ toast('無資料','warn'); return; }
   const stored = State.reimburseLoss || {F:0, J:0, N:0, sessionNo:1};
-  const dateROC = State.session.date;
+  const dateROC = outputDate();
 
   const body = `
-    <h3>衛生所繳回款（1:1 模板）</h3>
+    <h3>衛生所繳回款（1:1 模板）${scopeBoth()?'<span style="font-size:12px;color:var(--accent-ink);margin-left:8px">兩天合併</span>':''}</h3>
     <p style="font-size:12px;color:#666;margin:6px 0">區別「佳里」寫死；場次與耗損由你輸入。費用由 xlsx 公式自動算（無公式錯誤）。</p>
     <table style="width:100%;border-collapse:collapse;font-size:13px;margin:6px 0">
       <tr style="background:#f5f5f5">
@@ -3351,7 +3481,7 @@ async function buildReimbursementXlsx(stats, F, J, N, sessionNo){
   const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `衛生所繳回款_${State.session.date}_第${sessionNo}場.xlsx`;
+  a.href = url; a.download = `衛生所繳回款_${outputDate()}_第${sessionNo}場.xlsx`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   toast(`已匯出 衛生所繳回款 (${stats.D+stats.L+stats.H} 人 / 耗損 ${F+J+N})`,'ok');
@@ -4551,7 +4681,7 @@ ${forms}
 }
 async function openReferralDialog(){
   if(!State.session){ toast('未開啟場次','warn'); return; }
-  const merged = State.session.merged || [];
+  const merged = outputMerged();
   const items = [];
   for(const p of merged){
     const fobtPos = p.fobt && classifyReport(p.fobt.report)==='pos';
@@ -4564,7 +4694,7 @@ async function openReferralDialog(){
   // 從名冊帶出生日/地址
   const fillFromRoster = ()=>{
     const byId = new Map(), byCis = new Map();
-    for(const r of (State.session.roster||[])){
+    for(const r of outputRoster()){
       if(r.idno) byId.set(String(r.idno).trim(), r);
       if(r.cisid) byCis.set(String(r.cisid).trim(), r);
     }
@@ -4846,7 +4976,14 @@ document.getElementById('app-version').textContent = APP_VERSION;
   const params = new URLSearchParams(location.search);
   const isView = params.get('view') === '1';
   const sessionId = params.get('session');
+  // v0.3.68 embed=1：並排子畫面（隱藏品牌/首頁/切場）；?session= 不帶 view 直接進可編輯場次；?split=A,B 直接並排
+  if(params.get('embed') === '1') document.body.classList.add('embed');
+  if(params.get('pane') === 'left' || params.get('pane') === 'right') document.body.classList.add('pane-' + params.get('pane'));
   if(!isView){
+    const split = (params.get('split')||'').split(',').filter(Boolean);
+    const ensureSessions = async ()=>{ try{ const r=await fetch('/api/sessions'); const j=await r.json(); if(j.ok) State.allSessions=j.sessions||[]; }catch{} };
+    if(split.length===2){ ensureSessions().then(()=>openSplit(split[0], split[1])); return; }
+    if(sessionId){ ensureSessions().then(()=>openSession(sessionId)); return; }
     loadHome();
     return;
   }

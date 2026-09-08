@@ -943,7 +943,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.71';
+const APP_VERSION = 'v0.3.72';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1289,7 +1289,7 @@ function renderProgressChart(sessions){
     <rect width="800" height="${svgH}" fill="#ffffff"/>
     <text x="${padLeft}" y="22" font-family="Noto Sans TC,Microsoft JhengHei,sans-serif" font-size="14" font-weight="600" fill="#1a1c19">行動醫院檢體回收進度</text>
     <text x="${padLeft}" y="36" font-family="Noto Sans TC,sans-serif" font-size="10" fill="#6d706a">共 ${sorted.length} 場 · 總人次 ${sumAll} · 已回收 ${sumRecov} (${overallPct}%)</text>
-    <text x="800-${padRight}" y="36" font-family="JetBrains Mono,monospace" font-size="9" fill="#9a9c94" text-anchor="end">產生於 ${new Date().toLocaleString('zh-TW',{hour12:false})}</text>
+    <text x="${800-padRight}" y="36" font-family="JetBrains Mono,monospace" font-size="9" fill="#9a9c94" text-anchor="end">產生於 ${new Date().toLocaleString('zh-TW',{hour12:false})}</text>
     ${ticks}
     ${rows}
   `;

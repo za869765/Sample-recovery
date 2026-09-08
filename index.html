@@ -604,7 +604,7 @@ body.readonly .rs-cb{pointer-events:none}
 
       <section style="display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:baseline;gap:12px">
-          <h2 style="margin:0;font-size:13px;font-weight:500;color:var(--ink-2);letter-spacing:.02em">跨場次回收進度圖</h2>
+          <h2 style="margin:0;font-size:13px;font-weight:500;color:var(--ink-2);letter-spacing:.02em">跨場次回收進度圖 <span style="font-weight:400;color:var(--ink-faint)">（僅進行中場次）</span></h2>
           <div style="flex:1;height:1px;background:var(--line)"></div>
           <button class="rs-btn is-sm" id="btn-export-chart" data-tip="匯出當前圖表為 PNG 檔案">
             <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5 v6.5 M3.5 5.5 l3 3 l3 -3 M2 10.5 h9" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -931,7 +931,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.77';
+const APP_VERSION = 'v0.3.78';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1166,6 +1166,13 @@ function renderHomeSessions(){
   /* v0.3.67 往年場次自動結案：民國年 < 今年者一律視為已結案（不寫 localStorage，各裝置一致），首頁只留當年度 */
   const closed = new Set([...(State.closed || new Set()), ...all.filter(s=>isPastYearSession(s.date)).map(s=>s.date)]);
   const visible = State.showClosed ? all : all.filter(s => !closed.has(s.date));
+  // v0.3.78 進度圖只畫「進行中」：未結案、未鎖定（≤60 天或已解鎖）、且尚未 100% 回收
+  const charted = visible.filter(s => {
+    if(closed.has(s.date)) return false;
+    if(isStaleSession(s.date) && !(State.unlocked||new Set()).has(s.date)) return false;
+    const total=(s.fobt||0)+(s.gastric||0);
+    return total>0 && (s.recovered||0) < total;
+  });
 
   document.getElementById('home-summary-existing').textContent = `（雲端已有 ${visible.length} 個場次）`;
   const cs = document.getElementById('closed-summary');
@@ -1175,7 +1182,7 @@ function renderHomeSessions(){
     list.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink-faint);font-size:13px">
       ${all.length===0 ? '尚無場次，請新建' : '全部已結案（勾選上方可顯示）'}
     </div>`;
-    renderProgressChart(visible);
+    renderProgressChart(charted);
     return;
   }
 
@@ -1249,7 +1256,7 @@ function renderHomeSessions(){
     };
   });
 
-  renderProgressChart(visible);
+  renderProgressChart(charted);
 }
 
 /* ── 跨場次回收進度圖 ── */

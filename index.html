@@ -996,9 +996,8 @@ function adjacentSessions(date){
   if(has(prev)) return [prev, date];
   return null;
 }
-async function openSplit(a, b, from){
+async function openSplit(a, b){
   await flushAllPending();
-  const backTo = from || State.session?.date || a; // 恢復單日要回到哪一場：進入並排前的那場，沒有就左場
   State.session = null;
   showView('split');
   const all = State.allSessions || [];
@@ -1007,12 +1006,18 @@ async function openSplit(a, b, from){
   document.getElementById('topbar-session-roc').textContent = '· ' + rocToDate(a).slice(5) + ' / ' + rocToDate(b).slice(5) + ' 並排';
   document.getElementById('topbar-fobt-count').textContent = (sa.fobt||0)+(sb.fobt||0);
   document.getElementById('topbar-gastric-count').textContent = (sa.gastric||0)+(sb.gastric||0);
-  // v0.3.70 並排時「⇆ 並排」改成「↩ 恢復單日」，按下回到進入並排前的那一場
+  // v0.3.70 並排時「⇆ 並排」改成「↩ 恢復單日」，按下讓使用者指定要回左場還是右場
   const bs = document.getElementById('btn-split');
-  bs.textContent = '↩ 恢復單日 ' + backTo.slice(-4);
-  bs.setAttribute('data-tip', '回到單一場次畫面（' + backTo + '）');
+  bs.textContent = '↩ 恢復單日';
+  bs.setAttribute('data-tip', '回到單一場次畫面（可選左場或右場）');
   bs.classList.remove('hidden');
-  bs.onclick = ()=>openSession(backTo);
+  bs.onclick = async ()=>{
+    const pick = await dialog(`<h3>恢復單日 — 要回哪一場？</h3>
+      <p style="font-size:12px;color:var(--ink-mute);margin:4px 0 0">左（藍）${a} · ${rocToDate(a)}　／　右（綠）${b} · ${rocToDate(b)}</p>`,
+      [{label:'取消'},{label:'左 '+a.slice(-4)+'（'+rocToDate(a).slice(5)+'）'},{label:'右 '+b.slice(-4)+'（'+rocToDate(b).slice(5)+'）', primary:true}]);
+    if(pick===1) openSession(a);
+    else if(pick===2) openSession(b);
+  };
   document.getElementById('seg-scope').classList.add('hidden'); // v0.3.69 並排時左右各自有按鈕，共用列不放「單日／兩天合併」以免誤解
   document.getElementById('split-left').src  = location.pathname + '?session=' + encodeURIComponent(a) + '&embed=1&pane=left';
   document.getElementById('split-right').src = location.pathname + '?session=' + encodeURIComponent(b) + '&embed=1&pane=right';
@@ -1591,7 +1596,7 @@ async function openSession(date){
   bs.textContent = '⇆ 並排';
   bs.setAttribute('data-tip', '連續日期場次左右並排處理');
   bs.classList.toggle('hidden', !adj);
-  bs.onclick = ()=>{ if(adj) openSplit(adj[0], adj[1], date); };
+  bs.onclick = ()=>{ if(adj) openSplit(adj[0], adj[1]); };
   // 單日／兩天合併 切換（換場次一律回單日）
   State.scope='single'; State.session2=null;
   const seg = document.getElementById('seg-scope');

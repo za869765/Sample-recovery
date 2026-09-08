@@ -943,7 +943,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.70';
+const APP_VERSION = 'v0.3.71';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -996,9 +996,21 @@ function adjacentSessions(date){
   if(has(prev)) return [prev, date];
   return null;
 }
+/* v0.3.71 離開並排前先把左右 iframe 尚未送出的編輯（debounce 中的 PATCH）沖到雲端，避免恢復單日／回首頁時掉資料 */
+async function flushSplitPanes(){
+  const tasks=[];
+  for(const id of ['split-left','split-right']){
+    try{
+      const w=document.getElementById(id)?.contentWindow;
+      if(w && typeof w.flushAllPending==='function') tasks.push(w.flushAllPending());
+    }catch{}
+  }
+  if(tasks.length){ try{ await Promise.all(tasks); }catch{} }
+}
 async function openSplit(a, b){
   await flushAllPending();
   State.session = null;
+  State.scope = 'single'; State.session2 = null; // 並排時共用列沒有輸出按鈕，合併狀態一律清掉
   showView('split');
   const all = State.allSessions || [];
   const sa = all.find(s=>s.date===a)||{}, sb = all.find(s=>s.date===b)||{};
@@ -1123,6 +1135,7 @@ async function readExcel(file){
    ═══════════════════════════════════════════════════════════════════ */
 async function loadHome(){
   await flushAllPending();
+  if(State.view==='split') await flushSplitPanes(); // v0.3.71
   showView('home');
   const list=document.getElementById('home-sessions');
   list.innerHTML='<div style="padding:24px;text-align:center;color:var(--ink-faint);font-size:13px"><span class="spin"></span>載入中…</div>';
@@ -1585,6 +1598,7 @@ function setRecov(cisid, kind, value){
 }
 
 async function openSession(date){
+  if(State.view==='split') await flushSplitPanes(); // v0.3.71
   showView('cases');
   State.session = {date, cases:{fobt:[], gastric:[]}, merged:[]};
   document.getElementById('topbar-session-label').textContent = date;

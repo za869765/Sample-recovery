@@ -2,7 +2,30 @@
 // Body: { date, type, cisid, updates:{status?, report?, referral?, missed?, sendDate?, cancel?, tel1?, tel2?, dispatch?} }
 // Locates row by cisid (column L) then writes updated cells. Optimistic UI on client.
 
-import { getSheetId, getAccessToken, sheetsAPI, tabName, json, FIELD_COL, partialValue } from './_sheets.js';
+import { getSheetId, getAccessToken, sheetsAPI, tabName, json, FIELD_COL, partialValue, tabIds } from './_sheets.js';
+
+// DELETE /api/case  Body: { date, type, cisid }
+// 移除：直接刪掉該人所在的整列（不留退掛紀錄）
+export async function onRequestDelete({ request, env }){
+  try{
+    const { date, type, cisid } = await request.json();
+    if (!/^\d{7}$/.test(date)) return json({ok:false, error:'date 格式錯誤'}, 400);
+    if (!['fobt','gastric'].includes(type)) return json({ok:false, error:'type 須為 fobt 或 gastric'}, 400);
+    if (!cisid) return json({ok:false, error:'缺少 cisid'}, 400);
+    const sheetId = getSheetId(env);
+    const token = await getAccessToken(env);
+    const title = tabName(type, date);
+    const colL = await sheetsAPI(`/${sheetId}/values/${encodeURIComponent(title)}!L2:L`, 'GET', null, token);
+    const idx = (colL.values||[]).findIndex(r => String((r||[])[0]||'').trim() === String(cisid).trim());
+    if (idx < 0) return json({ok:false, error:'找不到 cisid='+cisid+' 於 '+title}, 404);
+    const gid = (await tabIds(sheetId, token)).get(title);
+    await sheetsAPI(`/${sheetId}:batchUpdate`, 'POST', {requests:[{deleteDimension:{
+      range:{sheetId:gid, dimension:'ROWS', startIndex:idx+1, endIndex:idx+2}}}]}, token);
+    return json({ok:true, deleted:cisid});
+  }catch(e){
+    return json({ok:false, error:e.message||String(e)}, 500);
+  }
+}
 
 export async function onRequestPatch({ request, env }){
   try{

@@ -505,6 +505,7 @@ body.readonly #btn-print-send,
 body.readonly #btn-reissue,
 body.readonly #btn-add-case,
 body.readonly #btn-withdraw,
+body.readonly .rs-del-session,
 body.readonly #btn-import-report,
 body.readonly #btn-export-cases,
 body.readonly #btn-export-overview,
@@ -780,7 +781,7 @@ body.readonly .rs-cb{pointer-events:none}
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <div class="rs-hints">
-            <span><span class="rs-kbd">點編號</span> 切換勾選</span>
+            <span><span class="rs-kbd">點編號</span> 切換勾選　<span class="rs-kbd">✕ 拒絕</span> 不寫入名冊</span>
           </div>
           <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
             <span style="font-size:12.5px;color:var(--ink-mute)">最終將寫入 <b class="rs-mono" style="color:var(--ink)" id="final-fobt">0</b> 腸篩 / <b class="rs-mono" style="color:var(--ink)" id="final-gastric">0</b> 胃篩</span>
@@ -837,9 +838,9 @@ body.readonly .rs-cb{pointer-events:none}
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 2 v9 M2 6.5 h9" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
         加掛
       </button>
-      <button class="rs-btn is-sm" id="btn-withdraw" data-tip="退掛：將該人從名冊撤掉並清空回收/送管/報告欄位；有回收管不扣消耗，無回收管補+1">
+      <button class="rs-btn is-sm" id="btn-withdraw" data-tip="退掛：將該人從名冊撤掉並清空回收/送管/報告欄位；有回收管不扣消耗，無回收管補+1。也可直接移除（整列刪除）">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 6.5 h9 M3 4 h7 M3 9 h7" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>
-        退掛
+        退掛／移除
       </button>
       <button class="rs-btn is-sm" id="btn-daily-chart" data-tip="本場次每日回收進度圖表（可匯出 PNG）">
         <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 11 v-3 M5 11 v-6 M8 11 v-4 M11 11 v-8 M1 12 h11" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>
@@ -931,7 +932,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.78';
+const APP_VERSION = 'v0.3.79';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1119,7 +1120,9 @@ async function readExcel(file){
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, {type:'array', cellDates:false, cellNF:false});
   const sh = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sh, {defval:'', raw:false});
+  // v0.3.79 defval 會讓 sheet_to_json 保留空白列（如衛生所查詢底下 100 列空白被算成 279 筆）→ 濾掉全空列
+  const rows = XLSX.utils.sheet_to_json(sh, {defval:'', raw:false})
+    .filter(r => Object.values(r).some(v => String(v).trim() !== ''));
   const cols = rows.length ? Object.keys(rows[0]) : (XLSX.utils.sheet_to_json(sh,{header:1, defval:''})[0]||[]);
   return {rows, cols};
 }
@@ -1221,13 +1224,40 @@ function renderHomeSessions(){
           ? '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6 a4 4 0 1 1 8 0 a4 4 0 1 1 -8 0 M4 6 L6 8 L9 4" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
           : '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3 l6 6 M9 3 l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'}
       </button>`}
+      <button class="rs-btn is-ghost is-icon is-sm rs-del-session" data-del-date="${s.date}" data-tip="刪除此場次（試算表的腸篩/胃篩/掛號/分組分頁一併刪除）" style="margin-left:4px;color:var(--bad)">🗑</button>
       <svg width="14" height="14" viewBox="0 0 14 14" style="color:var(--ink-faint)"><path d="M5 3 L9 7 L5 11" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
     </div>`;
   }).join('');
 
+  /* v0.3.79 刪除整個場次：需輸入場次日期確認 */
+  list.querySelectorAll('[data-del-date]').forEach(b=>{
+    b.onclick=async(ev)=>{
+      ev.stopPropagation();
+      const d=b.dataset.delDate;
+      const p=dialog(`<h3>刪除場次 ${d}</h3>
+        <p>將刪除 Google 試算表中 <b>行醫腸篩${d}／行醫胃篩${d}／行醫掛號${d}／行醫分組${d}</b> 分頁，所有回收、送管、報告資料一併刪除。</p>
+        <p style="color:var(--bad)">刪除後無法在系統內復原（需到 Google 試算表版本記錄還原）。</p>
+        <p style="margin-top:10px">請輸入場次日期 <b class="rs-mono">${d}</b> 確認：
+          <input class="rs-input is-mono" id="del-session-confirm" style="width:120px;margin-left:6px" autocomplete="off"></p>`,
+        [{label:'取消'},{label:'刪除場次', primary:true}]);
+      setTimeout(()=>document.getElementById('del-session-confirm')?.focus(),0);
+      let val='';
+      document.getElementById('del-session-confirm').oninput=e=>{ val=e.target.value.trim(); };
+      if(await p!==1) return;
+      if(val!==d){ toast('日期不符，未刪除','warn'); return; }
+      setSync('syncing','刪除中');
+      try{
+        const r=await fetch('/api/sessions?date='+d,{method:'DELETE'});
+        const j=await r.json(); if(!j.ok) throw new Error(j.error||'刪除失敗');
+        toast(`已刪除場次 ${d}`,'ok');
+        loadHome();
+      }catch(e){ setSync('bad','刪除失敗'); toast('刪除失敗：'+e.message,'bad'); }
+    };
+  });
+
   list.querySelectorAll('.rs-session').forEach(el=>{
     el.onclick=(ev)=>{
-      if(ev.target.closest('[data-close-date]') || ev.target.closest('[data-split]') || ev.target.closest('[data-unlock]')) return;
+      if(ev.target.closest('[data-close-date]') || ev.target.closest('[data-split]') || ev.target.closest('[data-unlock]') || ev.target.closest('[data-del-date]')) return;
       if(el.dataset.locked==='1'){ toast('此場次已超過 '+LOCK_AFTER_DAYS+' 天，請先按右側「🔒 解鎖」再打開','warn'); return; }
       openSession(el.dataset.date);
     };
@@ -1472,7 +1502,11 @@ function renderCandidates(){
     const eligible = c.band==='elig' && !c.missing;
     const {head, tail} = splitCisid(c.id93);
     const ageNote = c.band==='elig' ? (c.age>=76?'≥76':'30-39') : '40-44 不在範圍';
-    return `<tr ${c.band==='inelig'?'style="color:var(--ink-faint)"':''}>
+    const refused = eligible && !picked; // v0.3.79 可補助但沒勾 = 拒絕
+    const refuseBtn = !eligible ? '' : picked
+      ? `<button class="rs-btn is-sm" data-refuse="${i}" style="color:var(--bad);border-color:color-mix(in oklab,var(--bad) 40%,white)">✕ 拒絕</button>`
+      : `<button class="rs-btn is-sm" data-refuse="${i}">復原</button>`;
+    return `<tr ${c.band==='inelig'?'style="color:var(--ink-faint)"':refused?'style="color:var(--ink-faint);text-decoration:line-through"':''}>
       <td><span class="rs-cisid ${picked?'is-done':''}" data-idx="${i}" ${eligible?'':'aria-disabled="true"'}>
         <span class="rs-cisid-dot">${picked?'✓':''}</span>
         <span class="rs-cisid-head">${head}</span><span class="rs-cisid-tail">${tail}</span>
@@ -1481,10 +1515,17 @@ function renderCandidates(){
       <td>${c.missing?'<span style="color:var(--bad)" class="rs-mono">— 缺</span>':'<span class="rs-mono">'+c.idno+'</span>'}</td>
       <td class="rs-sex">${c.sex}</td>
       <td><span class="rs-age ${eligible?'is-elig':'is-inelig'}">${c.age}</span><span style="margin-left:6px;font-size:11px;color:${eligible?'var(--ok)':'var(--ink-faint)'}">${ageNote}</span></td>
-      <td style="font-size:11.5px;color:${c.missing?'var(--bad)':'var(--ink-mute)'}">${c.missing?'衛生所查詢 配對失敗 — 請手動補登':'id93 → 衛生所查詢 OK'}</td>
-      <td></td>
+      <td style="font-size:11.5px;color:${c.missing?'var(--bad)':'var(--ink-mute)'}">${c.missing?'衛生所查詢 配對失敗 — 請手動補登':refused?'<span style="color:var(--bad);display:inline-block">已拒絕，不寫入</span>':'id93 → 衛生所查詢 OK'}</td>
+      <td style="text-decoration:none">${refuseBtn}</td>
     </tr>`;
   }).join('');
+  document.querySelectorAll('#cand-tbody [data-refuse]').forEach(b=>{
+    b.onclick=()=>{
+      const i=+b.dataset.refuse;
+      if(State.candPicked.has(i)) State.candPicked.delete(i); else State.candPicked.add(i);
+      renderCandidates();
+    };
+  });
   document.querySelectorAll('#cand-tbody .rs-cisid').forEach(el=>{
     if(el.getAttribute('aria-disabled')) return;
     el.onclick=()=>{
@@ -4465,7 +4506,7 @@ function openWithdrawDialog(){
   if(!State.session?.merged?.length){ toast('無資料','warn'); return; }
   const d=document.getElementById('dialog'); const o=document.getElementById('overlay');
   d.innerHTML = `
-    <h3>退掛</h3>
+    <h3>退掛／移除</h3>
     <p style="margin-bottom:10px">將該人從名冊撤掉。輸入編號（末 3-4 碼或 13 全碼）找到該人，選回收狀況 + 腸/胃 後：<br>
        <b>① 清空 回收/送管/報告/轉介/未做腸鏡（A~D 姓名電話保留）</b>　<b>② K 欄標記取消追蹤</b>　<b>③ 依回收狀況決定耗材計數</b></p>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
@@ -4512,7 +4553,29 @@ function openWithdrawDialog(){
       const stateLbl = obj.sendDate?`已送管 ${obj.sendDate}`:obj.status==='V'?'已回收':'未回收';
       return `<button class="rs-btn is-primary" data-withdraw="${kind}" style="background:${color};border-color:${color}">${label} <span style="opacity:.8;font-size:11px;margin-left:4px">(${stateLbl})</span></button>`;
     };
-    actions.innerHTML = mkBtn('fobt','退掛腸篩','var(--warn)') + mkBtn('gastric','退掛胃篩','var(--accent)');
+    actions.innerHTML = mkBtn('fobt','退掛腸篩','var(--warn)') + mkBtn('gastric','退掛胃篩','var(--accent)')
+      + ['fobt','gastric'].filter(k=>p[k]).map(k=>`<button class="rs-btn" data-remove-case="${k}" style="color:var(--bad);border-color:color-mix(in oklab,var(--bad) 40%,white)" data-tip="直接從名冊刪除此列（例如拒絕、沒做），不留退掛紀錄">🗑 移除${k==='fobt'?'腸':'胃'}篩</button>`).join('');
+    // v0.3.79 移除：整列從試算表刪掉
+    actions.querySelectorAll('[data-remove-case]').forEach(b=>b.onclick=async()=>{
+      const kind=b.dataset.removeCase, kl=kind==='fobt'?'腸':'胃';
+      const ok = await dialog(`<h3>確認移除${kl}篩</h3>
+        <p>將 <b>${escapeHTML(p.name||'')}</b>（${p.cisid}）從本場<b>${kl}篩名冊整列刪除</b>，不留紀錄、不計入統計。</p>
+        <p style="color:var(--bad)">刪除後無法在系統內復原（需到 Google 試算表版本記錄還原）。</p>`,
+        [{label:'取消'},{label:'確認移除', primary:true}]);
+      if(ok!==1) return;
+      await flushAllPending();
+      setSync('syncing','移除中');
+      try{
+        const r=await fetch('/api/case',{method:'DELETE',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({date:State.session.date, type:kind, cisid:p.cisid})});
+        const j=await r.json(); if(!j.ok) throw new Error(j.error||'刪除失敗');
+        State.session.cases[kind] = State.session.cases[kind].filter(c=>c.cisid!==p.cisid);
+        setRecov(p.cisid, kind, '');
+        buildMerged(); renderCases();
+        setSync('ok','已同步');
+        toast(`已移除 ${p.name||p.cisid} 的${kl}篩`,'ok');
+      }catch(e){ setSync('bad','移除失敗'); toast('移除失敗：'+e.message,'bad'); }
+    });
     actions.querySelectorAll('[data-withdraw]').forEach(b=>b.onclick=async()=>{
       const kind=b.dataset.withdraw;
       const returned = d.querySelector('input[name="withdraw-returned"]:checked').value === '1';

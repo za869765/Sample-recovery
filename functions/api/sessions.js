@@ -1,7 +1,26 @@
 // GET /api/sessions
 // Lists 行醫腸篩{date} / 行醫胃篩{date} tabs, groups by date, returns counts + recovery progress.
 
-import { getSheetId, getAccessToken, sheetsAPI, listTabs, TAB_PREFIX, json, rowToCase } from './_sheets.js';
+import { getSheetId, getAccessToken, sheetsAPI, listTabs, TAB_PREFIX, json, rowToCase, tabIds } from './_sheets.js';
+
+// DELETE /api/sessions?date=1151107
+// 刪除整個場次：行醫腸篩/胃篩/掛號/分組{date} 四個分頁（存在的才刪）
+export async function onRequestDelete({ request, env }){
+  try{
+    const date = new URL(request.url).searchParams.get('date') || '';
+    if (!/^\d{7}$/.test(date)) return json({ok:false, error:'date 格式錯誤'}, 400);
+    const sheetId = getSheetId(env);
+    const token = await getAccessToken(env);
+    const ids = await tabIds(sheetId, token);
+    const gids = Object.values(TAB_PREFIX).map(p => ids.get(p + date)).filter(g => g != null);
+    if (!gids.length) return json({ok:false, error:'找不到 '+date+' 的分頁'}, 404);
+    await sheetsAPI(`/${sheetId}:batchUpdate`, 'POST',
+      {requests: gids.map(g => ({deleteSheet:{sheetId:g}}))}, token);
+    return json({ok:true, date, deletedTabs:gids.length});
+  }catch(e){
+    return json({ok:false, error:e.message||String(e)}, 500);
+  }
+}
 
 export async function onRequestGet({ env }){
   try{

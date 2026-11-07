@@ -83,6 +83,12 @@ export async function listTabs(sheetId, token){
   return meta.sheets.map(s=>s.properties.title);
 }
 
+// title → 數字 sheetId（gid），刪列/刪分頁要用
+export async function tabIds(sheetId, token){
+  const meta = await sheetsAPI(`/${sheetId}?fields=sheets.properties`, 'GET', null, token);
+  return new Map(meta.sheets.map(s=>[s.properties.title, s.properties.sheetId]));
+}
+
 export async function ensureTab(sheetId, title, token, existingTitles, headerRow){
   if (!existingTitles.has(title)){
     await sheetsAPI(`/${sheetId}:batchUpdate`, 'POST',

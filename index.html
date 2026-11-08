@@ -751,10 +751,6 @@ body.readonly .rs-cb{pointer-events:none}
               30-39 / ≥76 可申請補助
             </span>
             <span style="display:inline-flex;align-items:center;gap:6px">
-              <span style="width:10px;height:10px;border-radius:3px;background:var(--surface-alt);border:1px solid var(--line)"></span>
-              40-44 無家族史 不可做
-            </span>
-            <span style="display:inline-flex;align-items:center;gap:6px">
               <span style="width:10px;height:10px;border-radius:3px;background:var(--bad-soft);border:1px solid color-mix(in oklab,var(--bad) 30%,white)"></span>
               衛生所查詢 配對失敗
             </span>
@@ -933,7 +929,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.80';
+const APP_VERSION = 'v0.3.82';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -1435,13 +1431,14 @@ function updateSummary(){
   const f=State.files;
   document.getElementById('sum-fobt').textContent = f.fobt? f.fobt.rows.length : '—';
   document.getElementById('sum-gastric').textContent = f.gastric? f.gastric.rows.length : '—';
-  document.getElementById('sum-cand').innerHTML = (f.free? f.free.rows.length : '—') + '<span style="font-size:12px;color:var(--ink-mute);margin-left:6px">待勾選</span>';
   document.getElementById('sum-visit').textContent = f.visit? f.visit.rows.length : '—';
   // detect date
   if(f.visit){
     const sd = f.visit.rows.find(r=>r.sdate93)?.sdate93;
     State.date = String(sd||'').trim();
   }
+  // v0.3.82 只算市府補助（年次 30-39 / ≥76），需衛生所查詢才算得出年次
+  document.getElementById('sum-cand').innerHTML = (f.free? (f.visit? buildCandidates().length : f.free.rows.length) : '—') + '<span style="font-size:12px;color:var(--ink-mute);margin-left:6px">待勾選</span>';
   document.getElementById('detected-date').textContent = State.date || '—';
   document.getElementById('sum-fobt-tab').textContent = '→ 行醫腸篩' + (State.date||'—');
   document.getElementById('sum-gastric-tab').textContent = '→ 行醫胃篩' + (State.date||'—');
@@ -1465,15 +1462,18 @@ async function handleFiles(files){
 /* ═══════════════════════════════════════════════════════════════════
    STEP 3 — Candidate pick
    ═══════════════════════════════════════════════════════════════════ */
-function gotoStep3(){
-  // build candidates from 非45-75 + match visit
+/* v0.3.82 市府補助候選只列年次 30-39 / ≥76；40-44 屬 45-75 名冊（家族史健保），不歸市府補助 → 不列出 */
+function buildCandidates(){
   const visit = State.files.visit.rows;
   const visitById93 = new Map();
   visit.forEach(r=>{ const k=String(r.id93||'').trim(); if(k) visitById93.set(k,r); });
-  State.candidates = State.files.free.rows.map(r=>{
+  return State.files.free.rows.map(r=>{
     const id93 = String(r.id93||'').trim();
-    const age = parseInt(r.age||'0', 10);
     const v = visitById93.get(id93);
+    // v0.3.81 年齡一律算年次：場次民國年 − 出生民國年（衛生所查詢 bir_y）；查不到出生年才退回名冊 age
+    const rocY = parseInt(String(State.date||'').slice(0,3), 10);
+    const birY = parseInt(String(v?.bir_y||'').trim(), 10);
+    const age = (rocY && birY) ? rocY - birY : parseInt(r.age||'0', 10);
     const band = (age>=30&&age<=39)||age>=76 ? 'elig' : 'inelig';
     return {
       id93, name:r.name||'', sex:r.sex||'', age,
@@ -1483,7 +1483,10 @@ function gotoStep3(){
       missing: !v?.idno,
       band,
     };
-  }).sort((a,b)=>a.id93.localeCompare(b.id93));
+  }).filter(c=>c.band==='elig').sort((a,b)=>a.id93.localeCompare(b.id93));
+}
+function gotoStep3(){
+  State.candidates = buildCandidates();
   // default-pick all elig + not missing
   State.candPicked = new Set();
   State.candidates.forEach((c,i)=>{ if(c.band==='elig' && !c.missing) State.candPicked.add(i); });
@@ -1502,7 +1505,7 @@ function renderCandidates(){
     const picked = State.candPicked.has(i);
     const eligible = c.band==='elig' && !c.missing;
     const {head, tail} = splitCisid(c.id93);
-    const ageNote = c.band==='elig' ? (c.age>=76?'≥76':'30-39') : '40-44 不在範圍';
+    const ageNote = c.band==='elig' ? (c.age>=76?'≥76':'30-39') : '';
     const refused = eligible && !picked; // v0.3.79 可補助但沒勾 = 拒絕
     const refuseBtn = !eligible ? '' : picked
       ? `<button class="rs-btn is-sm" data-refuse="${i}" style="color:var(--bad);border-color:color-mix(in oklab,var(--bad) 40%,white)">✕ 拒絕</button>`

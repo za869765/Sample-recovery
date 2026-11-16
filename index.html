@@ -929,7 +929,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.82';
+const APP_VERSION = 'v0.3.83';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -2190,7 +2190,13 @@ function classifyReport(r){
   if(/^neg/i.test(s)) return 'norm';
   if(/^<\s*\d+(\.\d+)?$/.test(s)) return 'norm';
   if(/^-?\d+(\.\d+)?$/.test(s)) return parseFloat(s) <= 99 ? 'norm' : 'pos';
+  if(fobtOverLimit(s)) return 'pos';
   return 'empty';
+}
+/* v0.3.83 「>1000」「≧1000」這類超過儀器上限的寫法：大於的數 ≥100 就是陽性（「>50」無法判定，不算） */
+function fobtOverLimit(s){
+  const m = String(s||'').trim().match(/^[>＞≥≧]\s*=?\s*([\d,]+(\.\d+)?)$/);
+  return !!m && parseFloat(m[1].replace(/,/g,'')) >= 100;
 }
 function annotateReport(v, kind){
   const s = String(v||'').trim();
@@ -2207,6 +2213,7 @@ function annotateReport(v, kind){
     if(n <= 99) return `${s} (陰性)`;
     return `${s} (陽性)`;
   }
+  if(fobtOverLimit(s)) return `${s} (陽性)`;
   return s;
 }
 function cbHTML(p, kind, fld, color){
@@ -5029,7 +5036,7 @@ async function importReport(){
       for(const [cid,r] of buckets.fobt){ if(preview.length>=10) break; const p=byCis.get(cid); preview.push({n:p?.name||'',c:cid,k:'腸',r}); }
       for(const [cid,r] of buckets.gastric){ if(preview.length>=10) break; const p=byCis.get(cid); preview.push({n:p?.name||'',c:cid,k:'胃',r}); }
       const previewHtml = preview.map(m =>
-        `<tr><td style="padding:4px 8px">${escapeHTML(m.n)}</td><td class="rs-mono" style="padding:4px 8px">${escapeHTML(m.c)}</td><td style="padding:4px 8px">${m.k}</td><td style="padding:4px 8px">${escapeHTML(m.r)}</td></tr>`
+        `<tr><td style="padding:4px 8px">${escapeHTML(m.n)}</td><td class="rs-mono" style="padding:4px 8px">${escapeHTML(m.c)}</td><td style="padding:4px 8px">${m.k}</td><td style="padding:4px 8px${classifyReport(m.r)==='pos'?';color:var(--bad);font-weight:700':''}">${escapeHTML(m.r)}</td></tr>`
       ).join('');
       const ok = await dialog(
         `<h3>匯入檢驗報告預覽</h3>

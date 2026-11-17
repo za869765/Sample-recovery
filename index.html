@@ -929,7 +929,7 @@ body.readonly .rs-cb{pointer-events:none}
 <div class="rs-overlay" id="overlay"><div class="rs-dialog" id="dialog"></div></div>
 
 <script>
-const APP_VERSION = 'v0.3.83';
+const APP_VERSION = 'v0.3.84';
 
 /* ═══════════════════════════════════════════════════════════════════
    APP STATE + ROUTING
@@ -4651,7 +4651,8 @@ function referralFormHTML(item, ply, opts){
   const by=esc(b[0]||''), bm=esc(b[1]||''), bd=esc(b[2]||'');
   // 病情摘要 / 報告 / 轉診目的加註 — 格式照衛生所手寫範本（腸陽、胃陽、雙陽三款）
   const summary = [
-    item.fobtPos ? '糞便潛血檢查報告異常' : '',
+    // v0.3.84 與門診轉診單一致，加「建議執行大腸鏡檢查」；字縮小並固定一行，避免換行撐高版面
+    item.fobtPos ? '<span style="white-space:nowrap;font-size:11pt;letter-spacing:0">糞便潛血檢查報告異常，建議執行大腸鏡檢查。</span>' : '',
     item.gasPos ? 'HPSA(+)' : '',
   ].filter(Boolean).join('<br>');
   const reportLine = item.fobtPos
